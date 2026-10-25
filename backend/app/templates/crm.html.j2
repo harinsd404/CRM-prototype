@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+{#- 원본 P3(prompts/original/p3_html.md)의 Page Structure, Design Tokens, Image Rules, Layout Definitions를 그대로 옮긴 템플릿 -#}
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>{{ product_name }}</title>
+  <style>
+    /* 폰트 파일은 backend/assets/fonts/ 에 넣는다. 없으면 sans-serif로 표시된다. */
+    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOne-400.woff2') format('woff2'); font-weight:400; font-display:swap; }
+    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOne-700.woff2') format('woff2'); font-weight:700; font-display:swap; }
+
+    html, body, section, div, p, h1, h2, img { box-sizing: border-box; }
+    html { background:#ffffff; }
+    body { margin:0 auto; width:1440px; background:#ffffff; font-family:'SamsungOne', sans-serif; color:#000000; }
+
+    section { padding:80px 0; }
+    .bg-white { background:#ffffff; }
+    .bg-gray { background:#f7f7f7; }
+    .inner { width:1392px; margin:0 auto; }
+
+    .eyebrow { font-size:18px; line-height:1.33; font-weight:700; color:#2189ff; margin:0 0 25px 0; }
+    .headline { font-size:48px; line-height:1.2; font-weight:700; letter-spacing:-0.02em; color:#000000; margin:0 0 32px 0; }
+    .body { font-size:18px; line-height:1.33; font-weight:400; color:#000000; max-width:802px; margin:0; }
+
+    .media { width:100%; position:relative; overflow:hidden; }
+    .media img { width:100%; height:100%; object-fit:cover; display:block; }
+    .text { margin:0 0 48px 0; }
+
+    /* L1 : 텍스트 중앙 정렬(상) + 하단 이미지 */
+    .l1 .text { text-align:center; margin:0 auto 48px auto; }
+    .l1 .body { max-width:920px; margin:0 auto; }
+
+    /* L2 : 상단 풀블리드 이미지 + 하단 좌측 정렬 텍스트 */
+    section.l2 { padding:0 0 80px 0; }
+    .l2 .media { width:1440px; margin-bottom:48px; }
+    .l2 .text { margin:0; }
+
+    /* L3 : 풀블리드 + 하단 텍스트 오버레이 */
+    section.l3 { position:relative; padding:0; background:#000000; }
+    .l3 .media { width:1440px; height:810px; }
+    .l3 .media img { position:absolute; top:0; right:0; bottom:0; left:0; }
+    .l3 .media .shade { position:absolute; left:0; right:0; bottom:0; height:50%; background:linear-gradient(transparent, rgba(0,0,0,0.75)); z-index:1; }
+    .l3 .text { position:absolute; left:24px; bottom:80px; width:1392px; z-index:2; margin:0; }
+    .l3 .headline { color:#ffffff; }
+    .l3 .body { color:#e0e0e0; }
+
+    /* L4 : 카드형 */
+    .l4 .card { border-radius:24px; overflow:hidden; }
+    .l4 .card .text { background:#f2f2f2; padding:48px; margin:0; }
+
+    /* L5 : 2단 분할 */
+    .l5 .inner { display:flex; align-items:center; gap:72px; }
+    .l5 .text { flex:0 1 47%; min-width:0; margin:0; }
+    .l5 .media { flex:0 1 53%; min-width:0; }
+  </style>
+</head>
+<body>
+  <h1 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);">{{ product_name }}</h1>
+{% for s in sections %}
+  {%- set text %}
+      <div class="text">
+        <p class="eyebrow">{{ s.eyebrow }}</p>
+        <h2 class="headline">{{ s.headline }}</h2>
+        <p class="body">{{ s.body }}</p>
+      </div>
+  {%- endset %}
+  {%- set media %}
+      <div class="media" style="aspect-ratio:{{ s.aspect }};">
+        <img src="{{ s.image_url }}" alt="{{ s.pod }} 이미지">
+        {%- if s.layout == "L3" %}
+        <div class="shade"></div>
+        {%- endif %}
+      </div>
+  {%- endset %}
+  <section class="{{ s.layout | lower }}{% if s.bg != 'dark' %} bg-{{ s.bg }}{% endif %}">
+  {%- if s.layout == "L1" %}
+    <div class="inner">{{ text }}{{ media }}
+    </div>
+  {%- elif s.layout == "L2" %}
+    {{ media }}
+    <div class="inner">{{ text }}
+    </div>
+  {%- elif s.layout == "L3" %}
+    {{ media }}{{ text }}
+  {%- elif s.layout == "L4" %}
+    <div class="inner">
+      <div class="card">{{ media }}{{ text }}
+      </div>
+    </div>
+  {%- else %}
+    <div class="inner">{{ text }}{{ media }}
+    </div>
+  {%- endif %}
+  </section>
+{% endfor %}
+</body>
+</html>
