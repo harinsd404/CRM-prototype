@@ -21,12 +21,16 @@ export const api = {
 
   getRun: (runId: string) => request<RunState>(`/runs/${runId}`),
 
-  // slot을 주면 그 슬롯(이미지 단계의 Pod 하나)만 다시 생성한다
-  generate: (runId: string, step: StepName, slot?: string) =>
+  // slot을 주면 그 슬롯(이미지 단계의 Pod 하나)만 다시 생성한다. feedback은 모든 안에 반영할 사람의 수정 요청
+  generate: (runId: string, step: StepName, slot?: string, feedback?: string) =>
     request<RunState>(
       `/runs/${runId}/steps/${step}/generate${slot ? `?slot=${encodeURIComponent(slot)}` : ""}`,
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({ feedback: feedback ?? null }) },
     ),
+
+  // 고른 안의 일부를 요청대로 고친다. 이미지: 그 이미지를 고친 새 안 추가 / 카피: pod 하나만 다시 쓰기
+  revise: (runId: string, step: StepName, body: { slot: string; index: number; request: string; pod?: string }) =>
+    request<RunState>(`/runs/${runId}/steps/${step}/revise`, { method: "POST", body: JSON.stringify(body) }),
 
   // edited의 형식은 백엔드가 단계별 스키마로 검증한다 (틀리면 422)
   select: (runId: string, step: StepName, slot: string, index: number, edited?: StepContents[StepName]) =>

@@ -17,6 +17,13 @@ GENERATE_ATTEMPTS = 3
 RETRY_BACKOFF = 5  # 초. 두 번째 시도는 5초, 세 번째는 10초 뒤
 
 
+def with_feedback(angle: str, feedback: str | None) -> str:
+    """사람의 수정 요청을 안의 방향(angle) 뒤에 붙인다. 모든 단계 프롬프트가 {angle}을 쓰므로 프롬프트를 바꾸지 않아도 된다."""
+    if not feedback:
+        return angle
+    return f"{angle}\n\n[사람의 수정 요청 — 위 방향보다 우선해 반드시 반영]\n{feedback}"
+
+
 class Step(ABC):
     """모든 단계의 공통 틀.
 
@@ -47,18 +54,22 @@ class Step(ABC):
         사람이 판단할 위반은 경고 문구로 돌려준다."""
         return []
 
-    async def generate_slot(self, run: RunState, slot: str) -> SlotState:
+    async def generate_slot(self, run: RunState, slot: str, feedback: str | None = None) -> SlotState:
         context = self.build_context(run, slot)
         angles = [self.angles[i % len(self.angles)] for i in range(settings.num_options)]
         results = await asyncio.gather(
-            *(self._generate_with_retry(run, slot, context, angle, i) for i, angle in enumerate(angles)),
+            *(
+                self._generate_with_retry(run, slot, context, with_feedback(angle, feedback), i)
+                for i, angle in enumerate(angles)
+            ),
             return_exceptions=True,
         )
         # 일부 안만 실패하면 성공한 안으로 보여준다. 모두 실패했을 때만 단계 실패.
         succeeded = [(a, r) for a, r in zip(angles, results) if not isinstance(r, BaseException)]
         if not succeeded:
             raise next(r for r in results if isinstance(r, BaseException))
-        return SlotState(options=[self.make_option(run, slot, a, r) for a, r in succeeded])
+        label = (lambda a: f"{a} · 요청: {feedback}") if feedback else (lambda a: a)
+        return SlotState(options=[self.make_option(run, slot, label(a), r) for a, r in succeeded])
 
     async def _generate_with_retry(
         self, run: RunState, slot: str, context: dict[str, str], angle: str, index: int
@@ -74,8 +85,8 @@ class Step(ABC):
                 await asyncio.sleep(RETRY_BACKOFF * attempt)  # 할당량 초과(429)는 잠깐 기다려야 풀린다
         raise AssertionError("unreachable")
 
-    async def generate(self, run: RunState, slots: list[str]) -> dict[str, SlotState]:
-        states = await asyncio.gather(*(self.generate_slot(run, slot) for slot in slots))
+    async def generate(self, run: RunState, slots: list[str], feedback: str | None = None) -> dict[str, SlotState]:
+        states = await asyncio.gather(*(self.generate_slot(run, slot, feedback) for slot in slots))
         return dict(zip(slots, states))
 
     def make_option(self, run: RunState, slot: str, angle: str, content: BaseModel) -> Option:

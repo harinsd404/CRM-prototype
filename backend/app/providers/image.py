@@ -37,6 +37,12 @@ class ImageProvider(Protocol):
         """
         ...
 
+    async def edit(
+        self, source: Path, request: str, references: list[Path], out_dir: Path, ratio: str, seed: int, pod: str
+    ) -> Path:
+        """이미 만든 이미지(source)를 사람의 수정 요청(request)대로 고친 새 이미지를 저장하고 경로를 돌려준다."""
+        ...
+
 
 class PlaceholderProvider:
     """GPU 없이 흐름을 확인하기 위한 SVG 자리표시 이미지."""
@@ -56,6 +62,11 @@ class PlaceholderProvider:
         path = out_dir / f"{uuid4().hex[:8]}.svg"
         path.write_text(svg, encoding="utf-8")
         return path
+
+    async def edit(
+        self, source: Path, request: str, references: list[Path], out_dir: Path, ratio: str, seed: int, pod: str
+    ) -> Path:
+        return await self.generate("", references, out_dir, ratio, f"수정: {request}", seed, pod)
 
 
 def pool_ratio_tag(ratio: str) -> str:
@@ -88,6 +99,12 @@ class PoolProvider:
         shutil.copyfile(source, path)
         return path
 
+    async def edit(
+        self, source: Path, request: str, references: list[Path], out_dir: Path, ratio: str, seed: int, pod: str
+    ) -> Path:
+        # 풀은 수정할 수 없으므로 같은 Pod·화면비의 다른 이미지를 고른다 (시연 장애 대비용)
+        return await self.generate("", references, out_dir, ratio, "", seed + 1, pod)
+
 
 @lru_cache
 def _vertex_client() -> genai.Client:
@@ -103,37 +120,43 @@ def _vertex_slots() -> asyncio.Semaphore:
     return asyncio.Semaphore(settings.image_concurrency)
 
 
+_EDIT_PROMPT = """Edit the FIRST attached image according to the request below.
+
+- Change only what the request asks for. Keep everything else — composition, framing, lighting, mood — as it is.
+- The phone must stay exactly the device shown in the other attached official product images:
+  same silhouette and proportion, exactly 2 rear lenses plus one LED flash, same body color.
+- Output ONE continuous photograph. No collage, borders, bars, or panels.
+- Render NO text, letters, numbers, logos, or watermarks.
+
+Request: {request}
+"""
+
+
 class VertexGeminiProvider:
     """회사 GCP 프로젝트의 Vertex AI Gemini 이미지 모델. 원본 P2처럼 공식 제품 사진을 함께 보낸다."""
 
     async def generate(
         self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
-        if not references:
-            # 원본 P2: 제품 사진(①)이 없으면 생성하지 않는다
-            raise RuntimeError(
-                f"공식 제품 사진이 없습니다. {settings.product_image_dir}에 "
-                "closed_front / closed_back / unfolded 이미지를 넣어 주세요."
-            )
+        _require_references(references)
+        parts: list[types.Part | str] = [*map(_image_part, references), prompt]
+        return _save_image(await self._call_with_backoff(parts, ratio, seed), out_dir)
+
+    async def edit(
+        self, source: Path, request: str, references: list[Path], out_dir: Path, ratio: str, seed: int, pod: str
+    ) -> Path:
+        _require_references(references)
+        # 첫 첨부 = 고칠 이미지, 그 뒤 = 공식 제품 사진 (고치는 동안 제품 모양이 바뀌지 않게)
         parts: list[types.Part | str] = [
-            types.Part.from_bytes(data=ref.read_bytes(), mime_type=mimetypes.guess_type(ref.name)[0] or "image/png")
-            for ref in references
+            _image_part(source),
+            *map(_image_part, references),
+            _EDIT_PROMPT.format(request=request),
         ]
-        parts.append(prompt)
+        return _save_image(await self._call_with_backoff(parts, ratio, seed), out_dir)
 
-        response = await self._call_with_backoff(parts, ratio, seed)
-        candidate = response.candidates[0] if response.candidates else None
-        for part in candidate.content.parts if candidate and candidate.content else []:
-            if part.inline_data and part.inline_data.data:
-                suffix = mimetypes.guess_extension(part.inline_data.mime_type or "image/png") or ".png"
-                path = out_dir / f"{uuid4().hex[:8]}{suffix}"
-                path.write_bytes(part.inline_data.data)
-                return path
-        # 이미지 대신 글만 왔거나(예: 첨부 누락 안내) 안전 필터에 걸린 경우
-        reason = (response.text or "").strip() or (candidate.finish_reason if candidate else "응답 없음")
-        raise RuntimeError(f"이미지가 생성되지 않았습니다: {reason}")
-
-    async def _call_with_backoff(self, parts: list[types.Part | str], ratio: str, seed: int) -> types.GenerateContentResponse:
+    async def _call_with_backoff(
+        self, parts: list[types.Part | str], ratio: str, seed: int
+    ) -> types.GenerateContentResponse:
         """Vertex 이미지 모델은 공유 용량이 바쁠 때 429를 간헐적으로 돌려준다 (실측). 잠깐 기다렸다 다시 보낸다."""
         for wait in (*_RATE_LIMIT_WAITS, None):
             try:
@@ -158,6 +181,32 @@ class VertexGeminiProvider:
                 logger.warning("Vertex 이미지 429, %d초 뒤 다시 시도합니다", wait)
                 await asyncio.sleep(wait)
         raise AssertionError("unreachable")
+
+
+def _require_references(references: list[Path]) -> None:
+    if not references:
+        # 원본 P2: 제품 사진(①)이 없으면 생성하지 않는다
+        raise RuntimeError(
+            f"공식 제품 사진이 없습니다. {settings.product_image_dir}에 "
+            "closed_front / closed_back / unfolded 이미지를 넣어 주세요."
+        )
+
+
+def _image_part(path: Path) -> types.Part:
+    return types.Part.from_bytes(data=path.read_bytes(), mime_type=mimetypes.guess_type(path.name)[0] or "image/png")
+
+
+def _save_image(response: types.GenerateContentResponse, out_dir: Path) -> Path:
+    candidate = response.candidates[0] if response.candidates else None
+    for part in candidate.content.parts if candidate and candidate.content else []:
+        if part.inline_data and part.inline_data.data:
+            suffix = mimetypes.guess_extension(part.inline_data.mime_type or "image/png") or ".png"
+            path = out_dir / f"{uuid4().hex[:8]}{suffix}"
+            path.write_bytes(part.inline_data.data)
+            return path
+    # 이미지 대신 글만 왔거나(예: 첨부 누락 안내) 안전 필터에 걸린 경우
+    reason = (response.text or "").strip() or (candidate.finish_reason if candidate else "응답 없음")
+    raise RuntimeError(f"이미지가 생성되지 않았습니다: {reason}")
 
 
 def get_image_provider() -> ImageProvider:

@@ -40,3 +40,19 @@ export function Spinner({ className = "h-4 w-4" }: IconProps) {
     </svg>
   );
 }
+
+export function PencilIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" />
+    </svg>
+  );
+}
+
+export function CheckIcon({ className = "h-4 w-4" }: IconProps) {
+  return (
+    <svg {...base} className={className}>
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  );
+}

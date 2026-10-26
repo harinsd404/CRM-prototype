@@ -122,6 +122,33 @@ class CopyStep(TextStep):
             await shorten_headlines(copy)
         return copy
 
+    async def revise_pod(self, run: RunState, copy: CopyOption, pod: str, request: str) -> CopyOption:
+        """고른 카피안에서 Pod 하나만 사람의 요청대로 다시 쓴다. 나머지 Pod는 그대로 둔다."""
+        target = next(p for p in copy.pods if p.pod == pod)
+        if settings.llm_provider == "mock":
+            revised = target.model_copy(update={"headline": f"[수정] {target.headline}"[:HEADLINE_MAX]})
+        else:
+            current = "\n".join(
+                f"- {p.pod} ({p.headline_type} · {p.ending_order}) 헤드: {p.headline} / 바디: {p.body}" for p in copy.pods
+            )
+            revised = await invoke_structured(
+                "copy_revise",
+                PodCopy,
+                {
+                    "input_data": run.input.format(),
+                    "current_copy": current,
+                    "pod": pod,
+                    "request": request,
+                    "headline_max": str(HEADLINE_MAX),
+                    "body_max": str(BODY_MAX),
+                },
+            )
+            revised.pod = target.pod
+            single = CopyOption(pods=[revised], rationale="")
+            await shorten_headlines(single)
+            revised = single.pods[0]
+        return copy.model_copy(update={"pods": [revised if p.pod == pod else p for p in copy.pods]})
+
     def postprocess(self, run: RunState, slot: str, content: CopyOption) -> list[str]:
         sources = {pod: f"{spec} {run.input.product_name} {run.input.colors}" for pod, spec in run.input.specs.items()}
         return check_copy(content, [item["pod"] for item in self._plan(run)], sources)

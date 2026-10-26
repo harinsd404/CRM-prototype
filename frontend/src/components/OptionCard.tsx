@@ -1,4 +1,5 @@
 import type { CopyContent, ImageContent, Option, PodContent, StepName } from "../types";
+import { CheckIcon } from "./icons";
 
 interface Props {
   index: number;
@@ -15,13 +16,25 @@ export default function OptionCard({ index, step, option, selected, edited, disa
     <button
       onClick={onSelect}
       disabled={disabled}
-      className={`flex flex-col rounded-xl border-2 p-4 text-left text-sm transition hover:border-gray-400 disabled:cursor-wait ${
-        selected ? "border-primary ring-2 ring-primary-soft" : "border-gray-200"
+      className={`group flex flex-col rounded-xl border-2 p-4 text-left text-sm transition disabled:cursor-wait ${
+        selected ? "border-primary ring-2 ring-primary-soft" : "border-gray-200 hover:border-gray-400"
       }`}
     >
-      <span className="text-xs text-gray-400">
-        {index + 1}번 · {option.angle}
-        {edited && <span className="ml-1 text-primary">· 수정됨</span>}
+      <span className="flex items-start justify-between gap-2">
+        <span className="text-xs text-gray-400">
+          {index + 1}번 · {option.angle}
+          {edited && <span className="ml-1 text-primary">· 수정됨</span>}
+        </span>
+        {selected ? (
+          <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-white">
+            <CheckIcon className="h-3 w-3" />
+            선택됨
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-full border px-2 py-0.5 text-xs text-gray-500 opacity-0 transition group-hover:opacity-100">
+            클릭해서 선택
+          </span>
+        )}
       </span>
 
       {/* 원본 프롬프트 규칙을 코드로 검사한 결과. 사람이 고를 때 참고한다 */}

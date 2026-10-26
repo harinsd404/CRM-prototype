@@ -33,6 +33,7 @@
 - 어떤 단계를 다시 생성하거나 다시 선택하면 **그 뒤 단계는 초기화**된다. 앞 단계가 바뀌면 뒤 단계의 전제가 깨지기 때문.
 - N개 안은 한 번에 받지 않고 **안마다 다른 방향(angle)을 주어 N번 병렬 호출**한다. 경량 모델이 여러 안을 한 번에 쓰면 품질과 형식이 무너지기 때문.
 - 이미지에는 **글자를 넣지 않는다.** 카피는 HTML 템플릿에서 텍스트로 얹는다.
+- **수정 요청**: 사람이 말로 고칠 점을 주면 AI가 반영한다. 이미지 한 장(원본 이미지 + 제품 사진을 함께 보내 그 부분만 고침, 원래 안은 남김), 이미지 Pod 하나(요청을 반영해 3안 다시 생성), 카피 Pod 하나(나머지 Pod는 그대로).
 - **폭주 방지** (`core/guard.py`): 한 실행에서 생성은 한 번에 하나(409), 생성 요청은 1분에 10회까지(429), Vertex 이미지 호출은 하루 100장까지(재시도 포함, `data/usage.json`). 화면의 버튼 잠금은 새로고침·다른 탭·스크립트에는 효과가 없어 서버에도 둔다.
 
 ## 3. 기술 스택과 선택 이유
@@ -103,7 +104,8 @@ docs/plan.md
 |---|---|---|
 | POST | `/api/runs` | 입력 데이터로 실행 생성 (Pod별 스펙이 하나도 없으면 422) |
 | GET | `/api/runs/{id}` | 현재 상태 (UI는 이걸로 화면을 그림) |
-| POST | `/api/runs/{id}/steps/{step}/generate?slot=` | N안 생성 / 재생성 (`step` = `pod`·`copy`·`image`). `slot`을 주면 그 Pod만 |
+| POST | `/api/runs/{id}/steps/{step}/generate?slot=` | N안 생성 / 재생성 (`step` = `pod`·`copy`·`image`). `slot`을 주면 그 Pod만. body `{feedback}`을 주면 사람의 수정 요청을 모든 안에 반영 |
+| POST | `/api/runs/{id}/steps/{step}/revise` | `{slot, index, request, pod?}` 수정 요청. 이미지: 그 이미지를 고친 새 안을 추가·선택 / 카피: 그 안의 Pod 하나만 다시 쓰기 |
 | POST | `/api/runs/{id}/steps/{step}/select` | `{slot?, index, edited?}` 선택(+수정) 저장. 수정본도 같은 규칙으로 검사 |
 | POST | `/api/runs/{id}/render` | 최종 HTML 조립 + `html_input.json`(P1 [8] 형식) 저장 |
 | GET | `/api/runs/{id}/preview` | 조립된 HTML 미리보기 |

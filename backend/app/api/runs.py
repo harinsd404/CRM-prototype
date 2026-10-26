@@ -4,16 +4,30 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.config import settings
 from app.core import guard, store
 from app.core.render import build_html_input, render_crm
+from app.core.domain import PodName
 from app.core.state import MAIN_SLOT, STEP_ORDER, RunInput, RunState
 from app.steps import STEPS, Step
+from app.steps.copy import CopyOption, CopyStep
+from app.steps.image import ImageOption, ImageStep
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+
+class GenerateRequest(BaseModel):
+    feedback: str | None = Field(None, max_length=500)  # 사람의 수정 요청. 있으면 모든 안에 반영한다
+
+
+class ReviseRequest(BaseModel):
+    slot: str = MAIN_SLOT  # 이미지 단계는 Pod 이름
+    index: int  # 고칠 안 번호
+    request: str = Field(min_length=1, max_length=500)  # 사람의 수정 요청
+    pod: PodName | None = None  # 카피 단계: 고칠 Pod
 
 
 class SelectRequest(BaseModel):
@@ -46,8 +60,12 @@ def get_run(run_id: str) -> RunState:
 
 
 @router.post("/{run_id}/steps/{step_name}/generate", response_model=RunState)
-async def generate_step(run_id: str, step_name: str, slot: str | None = None) -> RunState:
-    """N안 생성. 재생성도 같은 API. slot을 주면 그 슬롯(예: 이미지 단계의 Pod 하나)만 다시 만든다."""
+async def generate_step(
+    run_id: str, step_name: str, slot: str | None = None, body: GenerateRequest | None = None
+) -> RunState:
+    """N안 생성. 재생성도 같은 API. slot을 주면 그 슬롯(예: 이미지 단계의 Pod 하나)만 다시 만든다.
+    body.feedback을 주면 사람의 수정 요청을 모든 안에 반영한다."""
+    feedback = body.feedback.strip() if body and body.feedback else None
     step = _get_step(step_name)
     run = _get_run(run_id)
 
@@ -66,7 +84,7 @@ async def generate_step(run_id: str, step_name: str, slot: str | None = None) ->
 
     with guard.run_lock(run_id):
         try:
-            generated = await step.generate(run, slots)
+            generated = await step.generate(run, slots, feedback)
         except Exception as e:
             logger.exception("%s 단계 생성 실패", step_name)
             raise HTTPException(502, f"'{step_name}' 생성에 실패했습니다: {e}") from e
@@ -104,6 +122,54 @@ def select_option(run_id: str, step_name: str, body: SelectRequest) -> RunState:
     slot.edited = edited
     run.reset_after(step_name)
     store.save_run(run)
+    return run
+
+
+@router.post("/{run_id}/steps/{step_name}/revise", response_model=RunState)
+async def revise_option(run_id: str, step_name: str, body: ReviseRequest) -> RunState:
+    """고른 안의 일부를 사람의 요청대로 고친다.
+    - 이미지: 그 이미지를 고친 새 안을 슬롯에 추가하고 선택한다 (원래 안은 남는다).
+    - 카피: 그 안에서 Pod 하나만 다시 쓰고, 수정본으로 선택한다."""
+    step = _get_step(step_name)
+    if not isinstance(step, ImageStep | CopyStep):
+        raise HTTPException(400, "수정 요청은 카피와 이미지 단계에서만 할 수 있습니다.")
+    run = _get_run(run_id)
+    slot = run.steps[step_name].slots.get(body.slot)
+    if slot is None:
+        raise HTTPException(400, f"'{step_name}' 단계에 생성된 '{body.slot}' 슬롯이 없습니다.")
+    if not 0 <= body.index < len(slot.options):
+        raise HTTPException(400, f"고칠 수 있는 안은 0~{len(slot.options) - 1}번입니다.")
+    request = body.request.strip()
+
+    guard.check_generate_rate()
+    if isinstance(step, ImageStep):
+        guard.check_image_budget(1)
+
+    with guard.run_lock(run_id):
+        try:
+            if isinstance(step, ImageStep):
+                base = slot.options[body.index]
+                revised = await step.revise_option(run, body.slot, ImageOption.model_validate(base.content), request)
+                slot.options.append(step.make_option(run, body.slot, f"{body.index + 1}번 수정 · {request}", revised))
+                slot.selected, slot.edited = len(slot.options) - 1, None
+            else:
+                if body.pod is None:
+                    raise HTTPException(400, "카피 수정 요청에는 고칠 Pod(pod)가 필요합니다.")
+                # 이미 직접 고친 수정본이 있으면 그 위에 고친다
+                base = slot.edited if slot.selected == body.index and slot.edited else slot.options[body.index]
+                copy = CopyOption.model_validate(base.content)
+                if body.pod not in [p.pod for p in copy.pods]:
+                    raise HTTPException(400, f"이 카피안에 없는 Pod입니다: {body.pod}")
+                revised = await step.revise_pod(run, copy, body.pod, request)
+                slot.selected, slot.edited = body.index, step.make_option(run, body.slot, base.angle, revised)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception("%s 수정 요청 실패", step_name)
+            raise HTTPException(502, f"수정 요청 처리에 실패했습니다: {e}") from e
+
+        run.reset_after(step_name)
+        store.save_run(run)
     return run
 
 

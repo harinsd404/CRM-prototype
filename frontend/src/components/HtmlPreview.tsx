@@ -26,9 +26,9 @@ export default function HtmlPreview({ run, onChange }: Props) {
   };
 
   return (
-    <section className={`rounded-xl border bg-white p-6 ${ready ? "" : "opacity-50"}`}>
+    <section id="step-render" className={`scroll-mt-24 rounded-xl border bg-white p-6 ${ready ? "" : "opacity-50"}`}>
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold">④ 최종 CRM 시안</h2>
+        <h2 className="font-semibold text-ink">④ 최종 CRM 시안</h2>
         <div className="flex items-center gap-3">
           {run.html && (
             <a href={api.previewUrl(run)} target="_blank" rel="noreferrer" className="text-sm text-gray-500 underline">

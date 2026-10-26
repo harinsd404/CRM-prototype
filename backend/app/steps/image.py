@@ -189,6 +189,25 @@ class ImageStep(Step):
         )
         return ImageOption(brief=brief, prompt=prompt, image_url=f"/api/files/{run.id}/images/{path.name}")
 
+    async def revise_option(self, run: RunState, slot: str, content: ImageOption, request: str) -> ImageOption:
+        """이미 만든 이미지 한 장을 사람의 요청대로 고친 새 안을 만든다. 연출안(brief)은 그대로 둔다."""
+        images = run_dir(run.id) / "images"
+        source = images / Path(content.image_url).name
+        path = await get_image_provider().edit(
+            source,
+            request,
+            reference_images(content.brief),
+            images,
+            ratio=content.brief.ratio,
+            seed=random.randint(0, 2**31 - 1),
+            pod=slot,
+        )
+        return ImageOption(
+            brief=content.brief,
+            prompt=f"{content.prompt}\n# Revision Request\n{request}\n",
+            image_url=f"/api/files/{run.id}/images/{path.name}",
+        )
+
     def postprocess(self, run: RunState, slot: str, content: ImageOption) -> list[str]:
         layout = self._plan_item(run, slot)["layout"]
         normalize_brief(content.brief, layout)
