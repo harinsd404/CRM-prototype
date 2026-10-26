@@ -1,5 +1,7 @@
 import asyncio
+import logging
 from abc import ABC, abstractmethod
+from functools import lru_cache
 from typing import Any, ClassVar
 
 from pydantic import BaseModel
@@ -8,6 +10,10 @@ from app.config import settings
 from app.core.prompts import load_prompt
 from app.core.state import MAIN_SLOT, Option, RunState, SlotState
 from app.llm import get_chat_model
+
+logger = logging.getLogger(__name__)
+
+GENERATE_ATTEMPTS = 2
 
 
 class Step(ABC):
@@ -44,9 +50,22 @@ class Step(ABC):
         context = self.build_context(run, slot)
         angles = [self.angles[i % len(self.angles)] for i in range(settings.num_options)]
         results = await asyncio.gather(
-            *(self.generate_option(run, slot, context, angle, i) for i, angle in enumerate(angles))
+            *(self._generate_with_retry(run, slot, context, angle, i) for i, angle in enumerate(angles))
         )
         return SlotState(options=[self.make_option(run, slot, a, r) for a, r in zip(angles, results)])
+
+    async def _generate_with_retry(
+        self, run: RunState, slot: str, context: dict[str, str], angle: str, index: int
+    ) -> BaseModel:
+        """모델 응답이 가끔 스키마를 어기거나 일시 오류가 나므로, 안 하나가 실패하면 그 안만 다시 시도한다."""
+        for attempt in range(1, GENERATE_ATTEMPTS + 1):
+            try:
+                return await self.generate_option(run, slot, context, angle, index)
+            except Exception:
+                if attempt == GENERATE_ATTEMPTS:
+                    raise
+                logger.warning("%s/%s 안 %d 생성 실패, 다시 시도합니다", self.name, slot, index + 1, exc_info=True)
+        raise AssertionError("unreachable")
 
     async def generate(self, run: RunState, slots: list[str]) -> dict[str, SlotState]:
         states = await asyncio.gather(*(self.generate_slot(run, slot) for slot in slots))
@@ -78,8 +97,15 @@ class TextStep(Step):
         return await invoke_structured(self.prompt_name, self.schema, {**context, "angle": angle})
 
 
+@lru_cache
+def _llm_slots() -> asyncio.Semaphore:
+    return asyncio.Semaphore(settings.llm_concurrency)
+
+
 async def invoke_structured(prompt_name: str, schema: type[BaseModel], variables: dict[str, str]) -> BaseModel:
     # json_schema 방식이면 서버(Vertex, vLLM)가 JSON 형식을 강제한다 (형식 깨짐 방지).
     model = get_chat_model().with_structured_output(schema, method="json_schema")
     chain = load_prompt(prompt_name) | model
-    return await chain.ainvoke(variables)
+    async with _llm_slots():
+        # 클라이언트 timeout만으로는 멈춘 요청이 끊기지 않았다 (실측: 15건 중 2건이 50분 넘게 대기).
+        return await asyncio.wait_for(chain.ainvoke(variables), settings.llm_timeout)

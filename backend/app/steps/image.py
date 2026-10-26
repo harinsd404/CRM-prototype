@@ -179,6 +179,7 @@ class ImageStep(Step):
             ratio=brief.ratio,
             label=f"{slot} · {brief.concept}",
             seed=random.randint(0, 2**31 - 1),
+            pod=slot,
         )
         return ImageOption(brief=brief, prompt=prompt, image_url=f"/api/files/{run.id}/images/{path.name}")
 

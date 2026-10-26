@@ -25,7 +25,7 @@ pnpm dev
 |---|---|
 | 텍스트 (①②③ 연출안) | Vertex AI Gemini: `LLM_PROVIDER=vertex` (아래 참고) |
 | 이미지 | Vertex AI Gemini: `IMAGE_PROVIDER=vertex` (아래 참고) |
-| 시연 대비 이미지 | `backend/assets/image_pool/`에 이미지를 넣고 `IMAGE_PROVIDER=pool` |
+| 시연 대비 이미지 | 잘 나온 실행의 이미지를 `uv run python scripts/save_pool.py <run_id>`로 풀에 저장하고 `IMAGE_PROVIDER=pool` (같은 Pod·화면비에서 고름) |
 | (선택) 로컬 오픈 모델 | `brew install ollama && ollama pull qwen3:8b` 후 `LLM_PROVIDER=openai` |
 
 ### Vertex AI Gemini

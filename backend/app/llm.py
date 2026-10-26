@@ -18,7 +18,8 @@ def get_chat_model() -> BaseChatModel:
             project=settings.google_cloud_project,
             location=settings.google_cloud_location,
             temperature=settings.llm_temperature,
-            timeout=120,
+            thinking_level=settings.vertex_thinking_level,
+            max_retries=2,
         )
 
     from langchain_openai import ChatOpenAI
@@ -32,6 +33,6 @@ def get_chat_model() -> BaseChatModel:
         api_key="EMPTY",  # 자체 서버는 키를 검사하지 않는다
         model=settings.llm_model,
         temperature=settings.llm_temperature,
-        timeout=120,
+        timeout=settings.llm_timeout,
         extra_body=extra_body,
     )

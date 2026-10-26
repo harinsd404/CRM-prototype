@@ -5,11 +5,13 @@ import {
   STEP_LABELS,
   STEP_ORDER,
   isStepComplete,
+  type CopyContent,
   type RunState,
   type SlotState,
   type StepContents,
   type StepName,
 } from "../types";
+import CopyEditBox from "./CopyEditBox";
 import EditBox from "./EditBox";
 import OptionCard from "./OptionCard";
 
@@ -151,7 +153,15 @@ function SlotView({ step, run, slotName, title, slot, busy, onRegenerate, onSele
       </div>
 
       {/* 이미지는 고르기만 하고, 텍스트 단계는 고른 안을 사람이 다듬을 수 있다 */}
-      {slot.selected !== null && step !== "image" && (
+      {slot.selected !== null && step === "copy" && (
+        <CopyEditBox
+          key={`${slot.selected}-${run.updated_at}`}
+          content={(slot.edited ?? slot.options[slot.selected]).content as CopyContent}
+          disabled={disabled}
+          onSave={(edited) => onSelect(slot.selected!, edited)}
+        />
+      )}
+      {slot.selected !== null && step === "pod" && (
         <EditBox
           key={`${slot.selected}-${run.updated_at}`}
           content={(slot.edited ?? slot.options[slot.selected]).content}

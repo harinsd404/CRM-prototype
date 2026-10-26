@@ -5,10 +5,12 @@ from pydantic import BaseModel, Field
 
 from app.core.domain import LAYOUT_DESCRIPTIONS, PodName
 from app.core.state import RunState
-from app.steps.base import TextStep
+from app.config import settings
+from app.steps.base import TextStep, invoke_structured
 
 HEADLINE_MAX = 20
 BODY_MAX = 110
+SHORTEN_ATTEMPTS = 2
 
 
 class FactCheck(BaseModel):
@@ -31,8 +33,36 @@ class CopyOption(BaseModel):
     rationale: str = Field(description="카피 소구 기획 의도")
 
 
-def check_copy(copy: CopyOption, plan_pods: list[str]) -> list[str]:
-    """원본 P1의 Writing Rules와 [7] 자가 점검을 코드로 검사한다."""
+class ShortHeadline(BaseModel):
+    pod: PodName
+    headline: str
+
+
+class ShortenResult(BaseModel):
+    headlines: list[ShortHeadline]
+
+
+async def shorten_headlines(copy: CopyOption) -> None:
+    """글자 수는 코드가 세고, 넘긴 헤드카피만 모델에게 다시 줄이게 한다. 그래도 넘으면 경고로 남는다."""
+    for _ in range(SHORTEN_ATTEMPTS):
+        long = [p for p in copy.pods if len(p.headline) > HEADLINE_MAX]
+        if not long:
+            return
+        items = "\n".join(f"- {p.pod} ({p.headline_type}): {p.headline}  ← 현재 {len(p.headline)}자" for p in long)
+        result = await invoke_structured("copy_shorten", ShortenResult, {"items": items, "max_length": str(HEADLINE_MAX)})
+        shortened = {h.pod: h.headline.strip() for h in result.headlines}
+        for p in long:
+            if (new := shortened.get(p.pod)) and len(new) < len(p.headline):
+                p.headline = new
+
+
+def _compact(text: str) -> str:
+    return "".join(text.split())
+
+
+def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) -> list[str]:
+    """원본 P1의 Writing Rules와 [7] 자가 점검을 코드로 검사한다.
+    sources: Pod별로 인용해도 되는 입력 원문 (그 Pod의 스펙 + 제품명 + 컬러)."""
     warnings = []
     pods = [p.pod for p in copy.pods]
     if pods != plan_pods:
@@ -44,6 +74,9 @@ def check_copy(copy: CopyOption, plan_pods: list[str]) -> list[str]:
             warnings.append(f"[{p.pod}] 헤드카피 {len(p.headline)}자 (최대 {HEADLINE_MAX}자)")
         if len(p.body) > BODY_MAX:
             warnings.append(f"[{p.pod}] 바디카피 {len(p.body)}자 (최대 {BODY_MAX}자)")
+        allowed = _compact(sources.get(p.pod, ""))
+        if unsourced := [f.source for f in p.factcheck if _compact(f.source) not in allowed]:
+            warnings.append(f"[{p.pod}] 입력 스펙에 없는 근거: {', '.join(unsourced)}")
 
     types = Counter(p.headline_type for p in copy.pods)
     if len(types) < 4:
@@ -80,8 +113,17 @@ class CopyStep(TextStep):
         )
         return {"input_data": run.input.format(), "pod_plan": plan}
 
+    async def generate_option(
+        self, run: RunState, slot: str, context: dict[str, str], angle: str, index: int
+    ) -> CopyOption:
+        copy = await super().generate_option(run, slot, context, angle, index)
+        if settings.llm_provider != "mock":
+            await shorten_headlines(copy)
+        return copy
+
     def postprocess(self, run: RunState, slot: str, content: CopyOption) -> list[str]:
-        return check_copy(content, [item["pod"] for item in self._plan(run)])
+        sources = {pod: f"{spec} {run.input.product_name} {run.input.colors}" for pod, spec in run.input.specs.items()}
+        return check_copy(content, [item["pod"] for item in self._plan(run)], sources)
 
     def mock_option(self, run: RunState, slot: str, angle: str, index: int) -> CopyOption:
         pods = []

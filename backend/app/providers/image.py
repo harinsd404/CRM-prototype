@@ -12,6 +12,7 @@ from google import genai
 from google.genai import types
 
 from app.config import settings
+from app.core.domain import POD_ENGLISH
 
 # 자리표시 이미지의 화면비별 크기
 IMAGE_SIZES: dict[str, tuple[int, int]] = {"1:1": (1024, 1024), "4:3": (1024, 768), "16:9": (1344, 768)}
@@ -22,11 +23,11 @@ _PALETTES = [("#f6d365", "#fda085"), ("#a1c4fd", "#c2e9fb"), ("#d4fc79", "#96e6a
 
 class ImageProvider(Protocol):
     async def generate(
-        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int
+        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
         """prompt로 이미지 한 장을 만들어 out_dir에 저장하고 경로를 돌려준다.
 
-        references는 참조 이미지(공식 제품 사진 등), label은 자리표시 이미지에 쓰는 짧은 설명.
+        references는 참조 이미지(공식 제품 사진 등), label은 자리표시 이미지에 쓰는 짧은 설명, pod는 Pod 이름.
         """
         ...
 
@@ -35,7 +36,7 @@ class PlaceholderProvider:
     """GPU 없이 흐름을 확인하기 위한 SVG 자리표시 이미지."""
 
     async def generate(
-        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int
+        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
         width, height = IMAGE_SIZES[ratio]
         start, end = _PALETTES[seed % len(_PALETTES)]
@@ -51,16 +52,32 @@ class PlaceholderProvider:
         return path
 
 
+def pool_ratio_tag(ratio: str) -> str:
+    return ratio.replace(":", "x")  # 파일 이름에 콜론을 쓰지 않는다 (16:9 → 16x9)
+
+
+def _images(folder: Path) -> list[Path]:
+    if not folder.is_dir():
+        return []
+    return sorted(p for p in folder.iterdir() if p.suffix.lower() in _POOL_SUFFIXES)
+
+
 class PoolProvider:
-    """assets/image_pool의 미리 만든 이미지에서 고른다. 시연 중 이미지 서버 장애 대비용."""
+    """assets/image_pool의 미리 만든 이미지에서 고른다. 시연 중 Vertex 장애 대비용.
+
+    image_pool/{Pod 영문명}/{16x9 등}_*.png 중 같은 Pod·화면비를 먼저 고르고, 없으면 같은 Pod, 그다음 풀 맨 위.
+    scripts/save_pool.py로 실행 하나의 이미지를 이 구조로 저장할 수 있다.
+    """
 
     async def generate(
-        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int
+        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
-        pool = sorted(p for p in settings.image_pool_dir.iterdir() if p.suffix.lower() in _POOL_SUFFIXES)
+        pod_images = _images(settings.image_pool_dir / POD_ENGLISH[pod])
+        same_ratio = [p for p in pod_images if p.name.startswith(f"{pool_ratio_tag(ratio)}_")]
+        pool = same_ratio or pod_images or _images(settings.image_pool_dir)
         if not pool:
             raise RuntimeError(f"이미지 풀이 비어 있습니다: {settings.image_pool_dir}")
-        source = random.choice(pool)
+        source = random.Random(seed).choice(pool)
         path = out_dir / f"{uuid4().hex[:8]}{source.suffix.lower()}"
         shutil.copyfile(source, path)
         return path
@@ -84,7 +101,7 @@ class VertexGeminiProvider:
     """회사 GCP 프로젝트의 Vertex AI Gemini 이미지 모델. 원본 P2처럼 공식 제품 사진을 함께 보낸다."""
 
     async def generate(
-        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int
+        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
         if not references:
             # 원본 P2: 제품 사진(①)이 없으면 생성하지 않는다
@@ -99,14 +116,17 @@ class VertexGeminiProvider:
         parts.append(prompt)
 
         async with _vertex_slots():
-            response = await _vertex_client().aio.models.generate_content(
-                model=settings.vertex_image_model,
-                contents=parts,
-                config=types.GenerateContentConfig(
-                    response_modalities=["TEXT", "IMAGE"],
-                    image_config=types.ImageConfig(aspect_ratio=ratio),
-                    seed=seed,
+            response = await asyncio.wait_for(
+                _vertex_client().aio.models.generate_content(
+                    model=settings.vertex_image_model,
+                    contents=parts,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["TEXT", "IMAGE"],
+                        image_config=types.ImageConfig(aspect_ratio=ratio),
+                        seed=seed,
+                    ),
                 ),
+                settings.image_timeout,
             )
 
         candidate = response.candidates[0] if response.candidates else None

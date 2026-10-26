@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     llm_model: str = "qwen3:8b"
     llm_temperature: float = 0.9
     llm_disable_thinking: bool = True
+    llm_timeout: float = 45  # 응답이 멈추는 경우가 있어 코드에서 직접 끊고 다시 시도한다
+    llm_concurrency: int = 6  # 동시에 보내는 텍스트 요청 수 (③은 Pod 5개 × N안)
 
     image_provider: Literal["placeholder", "pool", "vertex"] = "placeholder"
     image_pool_dir: Path = BACKEND_DIR / "assets" / "image_pool"
@@ -25,8 +27,10 @@ class Settings(BaseSettings):
     google_cloud_project: str = ""
     google_cloud_location: str = "global"
     vertex_text_model: str = "gemini-3.5-flash"
+    vertex_thinking_level: str = "low"  # low면 응답이 약 4배 빠르다 (측정: 12초 → 3초)
     vertex_image_model: str = "gemini-2.5-flash-image"
     image_concurrency: int = 3  # 동시에 보내는 이미지 요청 수 (Vertex 할당량 보호)
+    image_timeout: float = 120
 
     num_options: int = 3
     data_dir: Path = BACKEND_DIR / "data" / "runs"
