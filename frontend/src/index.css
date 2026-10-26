@@ -21,10 +21,10 @@
 
   --color-ink: #1e2e3d;
 
-  --color-primary: #257cff;
-  --color-primary-hover: #186eee;
-  --color-primary-pressed: #0c57cb;
-  --color-primary-soft: #e5f0ff;
+  --color-primary: #2189ff; /* 시안 Pod eyebrow 색 (P3 디자인 토큰) */
+  --color-primary-hover: #1a78e6;
+  --color-primary-pressed: #1462c2;
+  --color-primary-soft: #e6f1ff;
 
   --color-danger: #f44336;
   --color-danger-strong: #c62828;
