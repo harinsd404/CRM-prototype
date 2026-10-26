@@ -54,17 +54,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-3">
-          <h1 className="shrink-0 text-lg font-bold text-ink">CRM 시안 생성 프로토타입</h1>
-          {run && <Stepper run={run} />}
-          {run && (
-            <button onClick={reset} className="shrink-0 text-sm text-gray-500 hover:text-gray-900">
-              새로 시작
-            </button>
-          )}
-        </div>
-      </header>
+      {/* 진행 단계만 위에 고정해 둔다 */}
+      {run && (
+        <header className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl justify-center px-6 py-3">
+            <Stepper run={run} />
+          </div>
+        </header>
+      )}
 
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
         {loadError && <ErrorMessage message={loadError} onClose={() => setLoadError(null)} />}
