@@ -33,6 +33,10 @@ class CopyOption(BaseModel):
     rationale: str = Field(description="카피 소구 기획 의도")
 
 
+class RevisedPods(BaseModel):
+    pods: list[PodCopy] = Field(description="[수정할 Pod]만, 지금 카피의 순서대로")
+
+
 class ShortHeadline(BaseModel):
     pod: PodName
     headline: str
@@ -122,32 +126,36 @@ class CopyStep(TextStep):
             await shorten_headlines(copy)
         return copy
 
-    async def revise_pod(self, run: RunState, copy: CopyOption, pod: str, request: str) -> CopyOption:
-        """고른 카피안에서 Pod 하나만 사람의 요청대로 다시 쓴다. 나머지 Pod는 그대로 둔다."""
-        target = next(p for p in copy.pods if p.pod == pod)
+    async def revise_pods(self, run: RunState, copy: CopyOption, pods: list[str], request: str) -> CopyOption:
+        """고른 카피안에서 지정한 Pod들만 사람의 요청대로 다시 쓴다 (전체 선택도 가능). 나머지 Pod는 그대로 둔다.
+        여러 Pod를 한 번에 맡겨야 고친 Pod끼리 헤드카피 유형·어미 배열이 겹치지 않는다."""
+        targets = [p for p in copy.pods if p.pod in pods]
         if settings.llm_provider == "mock":
-            revised = target.model_copy(update={"headline": f"[수정] {target.headline}"[:HEADLINE_MAX]})
+            revised = {p.pod: p.model_copy(update={"headline": f"[수정] {p.headline}"[:HEADLINE_MAX]}) for p in targets}
         else:
             current = "\n".join(
                 f"- {p.pod} ({p.headline_type} · {p.ending_order}) 헤드: {p.headline} / 바디: {p.body}" for p in copy.pods
             )
-            revised = await invoke_structured(
+            result = await invoke_structured(
                 "copy_revise",
-                PodCopy,
+                RevisedPods,
                 {
                     "input_data": run.input.format(),
                     "current_copy": current,
-                    "pod": pod,
+                    "pods": ", ".join(p.pod for p in targets),
                     "request": request,
                     "headline_max": str(HEADLINE_MAX),
                     "body_max": str(BODY_MAX),
                 },
             )
-            revised.pod = target.pod
-            single = CopyOption(pods=[revised], rationale="")
-            await shorten_headlines(single)
-            revised = single.pods[0]
-        return copy.model_copy(update={"pods": [revised if p.pod == pod else p for p in copy.pods]})
+            revised = {p.pod: p for p in result.pods if p.pod in pods}
+            missing = [p.pod for p in targets if p.pod not in revised]
+            if missing:
+                raise ValueError(f"모델이 일부 Pod를 돌려주지 않았습니다: {', '.join(missing)}")
+            partial = CopyOption(pods=list(revised.values()), rationale="")
+            await shorten_headlines(partial)
+            revised = {p.pod: p for p in partial.pods}
+        return copy.model_copy(update={"pods": [revised.get(p.pod, p) for p in copy.pods]})
 
     def postprocess(self, run: RunState, slot: str, content: CopyOption) -> list[str]:
         sources = {pod: f"{spec} {run.input.product_name} {run.input.colors}" for pod, spec in run.input.specs.items()}

@@ -9,13 +9,43 @@ interface Props {
   index: number;
   step: StepName;
   option: Option<StepName>;
+  original: Option<StepName> | null; // 사람이 고친 경우 AI가 처음 만든 안. 바뀐 곳을 표시하는 데 쓴다
   selected: boolean;
-  edited: boolean;
   disabled: boolean;
   onSelect: () => void;
 }
 
-export default function OptionCard({ index, step, option, selected, edited, disabled, onSelect }: Props) {
+type PodItem = PodContent["items"][number];
+type PodCopy = CopyContent["pods"][number];
+
+const copyChanged = (a: PodCopy, b: PodCopy | undefined) => !b || a.headline !== b.headline || a.body !== b.body;
+const podChanged = (item: PodItem, i: number, before: PodContent) =>
+  before.items[i]?.pod !== item.pod || before.items[i]?.layout !== item.layout;
+
+/** AI가 만든 안에서 사람이(또는 AI 수정 요청으로) 바뀐 곳의 수 */
+function countChanges(step: StepName, content: unknown, original: unknown): number {
+  if (step === "pod") {
+    const before = original as PodContent;
+    return (content as PodContent).items.filter((item, i) => podChanged(item, i, before)).length;
+  }
+  if (step === "copy") {
+    const before = (original as CopyContent).pods;
+    return (content as CopyContent).pods.filter((p) =>
+      copyChanged(
+        p,
+        before.find((b) => b.pod === p.pod),
+      ),
+    ).length;
+  }
+  return 0;
+}
+
+// 이미지 수정 요청으로 생긴 안은 angle이 "N번 수정 · 요청"이다 (backend/app/api/runs.py revise_option)
+const REVISED_IMAGE = /^(\d+)번 수정 · (.+)$/;
+
+export default function OptionCard({ index, step, option, original, selected, disabled, onSelect }: Props) {
+  const changes = original ? countChanges(step, option.content, original.content) : 0;
+  const revisedFrom = step === "image" ? REVISED_IMAGE.exec(option.angle) : null;
   // 안에 "크게 보기" 버튼을 넣어야 해서 <button> 대신 버튼 역할의 div로 만든다
   const choose = () => !disabled && onSelect();
   const onKeyDown = (e: KeyboardEvent) => {
@@ -47,7 +77,16 @@ export default function OptionCard({ index, step, option, selected, edited, disa
           >
             {index + 1}안
           </span>
-          {edited && <span className="text-xs font-semibold text-primary">수정됨</span>}
+          {original && (
+            <span className="rounded-md bg-ink px-2 py-0.5 text-xs font-semibold text-white">
+              ✎ 수정됨{changes > 0 && ` · ${changes}곳`}
+            </span>
+          )}
+          {revisedFrom && (
+            <span className="rounded-md bg-ink px-2 py-0.5 text-xs font-semibold text-white">
+              ✎ {revisedFrom[1]}안 수정본
+            </span>
+          )}
         </span>
         {selected ? (
           <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-white">
@@ -60,7 +99,9 @@ export default function OptionCard({ index, step, option, selected, edited, disa
           </span>
         )}
       </span>
-      <p className="mt-2 leading-snug font-semibold text-ink">{option.angle}</p>
+      <p className="mt-2 leading-snug font-semibold text-ink">
+        {revisedFrom ? `요청: ${revisedFrom[2]}` : option.angle}
+      </p>
 
       {/* 원본 프롬프트 규칙을 코드로 검사한 결과. 사람이 고를 때 참고한다 */}
       {option.warnings.length > 0 && (
@@ -72,9 +113,15 @@ export default function OptionCard({ index, step, option, selected, edited, disa
       )}
 
       <div className="mt-2 space-y-2">
-        {step === "pod" && <PodBody content={option.content as PodContent} />}
-        {step === "copy" && <CopyBody content={option.content as CopyContent} />}
-        {step === "image" && <ImageBody content={option.content as ImageContent} title={`${index + 1}번 · ${option.angle}`} />}
+        {step === "pod" && (
+          <PodBody content={option.content as PodContent} original={(original?.content as PodContent) ?? null} />
+        )}
+        {step === "copy" && (
+          <CopyBody content={option.content as CopyContent} original={(original?.content as CopyContent) ?? null} />
+        )}
+        {step === "image" && (
+          <ImageBody content={option.content as ImageContent} title={`${index + 1}번 · ${option.angle}`} />
+        )}
       </div>
     </div>
   );
@@ -90,7 +137,14 @@ function Rationale({ label, text }: { label: string; text: string }) {
   );
 }
 
-function PodBody({ content }: { content: PodContent }) {
+// 바뀐 블록: 왼쪽 굵은 선과 옅은 배경
+const CHANGED_BLOCK = "border-gray-200 border-l-4 border-l-ink bg-gray-50";
+
+function ChangedTag() {
+  return <span className="rounded bg-ink px-1.5 py-0.5 text-[10px] font-semibold text-white">수정</span>;
+}
+
+function PodBody({ content, original }: { content: PodContent; original: PodContent | null }) {
   return (
     <>
       <p className="rounded-lg bg-gray-50 p-2.5 text-xs leading-relaxed text-gray-600">
@@ -98,51 +152,87 @@ function PodBody({ content }: { content: PodContent }) {
         {content.target_summary}
       </p>
       <ol className="space-y-1.5">
-        {content.items.map((item, i) => (
-          <li key={i} className="rounded-lg border border-gray-200 p-2.5">
-            <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">
-                {i + 1}
-              </span>
-              <span className="flex-1 font-semibold text-ink">{item.pod}</span>
-              <span className="flex items-center gap-1.5" title={LAYOUT_LABELS[item.layout]}>
-                <LayoutIcon layout={item.layout} />
-                <span className="font-mono text-xs text-gray-500">{item.layout}</span>
-              </span>
-            </div>
-            <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500" title={item.reason}>
-              {item.reason}
-            </p>
-          </li>
-        ))}
+        {content.items.map((item, i) => {
+          const changed = original !== null && podChanged(item, i, original);
+          const before = original?.items.find((b) => b.pod === item.pod);
+          const fromIndex = original ? original.items.findIndex((b) => b.pod === item.pod) : i;
+          return (
+            <li key={i} className={`rounded-lg border p-2.5 ${changed ? CHANGED_BLOCK : "border-gray-200"}`}>
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">
+                  {i + 1}
+                </span>
+                <span className="font-semibold text-ink">{item.pod}</span>
+                {changed && <ChangedTag />}
+                <span className="flex-1" />
+                <span className="flex items-center gap-1.5" title={LAYOUT_LABELS[item.layout]}>
+                  <LayoutIcon layout={item.layout} />
+                  <span className="font-mono text-xs text-gray-500">{item.layout}</span>
+                </span>
+              </div>
+              {changed && before && (
+                <p className="mt-1.5 text-xs text-gray-500">
+                  AI 원안:{" "}
+                  <span className="line-through">
+                    {fromIndex + 1}번째 · {before.layout}
+                  </span>
+                </p>
+              )}
+              <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500" title={item.reason}>
+                {item.reason}
+              </p>
+            </li>
+          );
+        })}
       </ol>
       <Rationale label="이 순서로 구성한 이유" text={content.rationale} />
     </>
   );
 }
 
-function CopyBody({ content }: { content: CopyContent }) {
+function CopyBody({ content, original }: { content: CopyContent; original: CopyContent | null }) {
   return (
     <>
       <ol className="space-y-1.5">
-        {content.pods.map((p, i) => (
-          <li key={i} className="rounded-lg border border-gray-200 p-3">
-            <p className="text-xs font-semibold text-primary">{p.eyebrow}</p>
-            <p className="mt-1 text-[15px] leading-snug font-bold text-ink">{p.headline}</p>
-            <p className="mt-1.5 leading-relaxed text-gray-700">{p.body}</p>
-            {/* 규칙 검사에 쓰는 값: 글자 수(기준은 backend/app/steps/copy.py), 헤드카피 유형, 어미 배열 */}
-            <p className="mt-2 flex flex-wrap gap-1 text-[11px] text-gray-500">
-              <span className={`rounded px-1.5 py-0.5 ${p.headline.length > 20 ? "bg-danger-soft text-danger" : "bg-gray-100"}`}>
-                헤드 {p.headline.length}/20자
-              </span>
-              <span className={`rounded px-1.5 py-0.5 ${p.body.length > 110 ? "bg-danger-soft text-danger" : "bg-gray-100"}`}>
-                바디 {p.body.length}/110자
-              </span>
-              <span className="rounded bg-gray-100 px-1.5 py-0.5">유형 {p.headline_type}</span>
-              <span className="rounded bg-gray-100 px-1.5 py-0.5">어미 {p.ending_order}</span>
-            </p>
-          </li>
-        ))}
+        {content.pods.map((p, i) => {
+          const before = original?.pods.find((b) => b.pod === p.pod);
+          const changed = original !== null && copyChanged(p, before);
+          return (
+            <li key={i} className={`rounded-lg border p-3 ${changed ? CHANGED_BLOCK : "border-gray-200"}`}>
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                {p.eyebrow}
+                {changed && <ChangedTag />}
+              </p>
+              <p className="mt-1 text-[15px] leading-snug font-bold text-ink">{p.headline}</p>
+              <p className="mt-1.5 leading-relaxed text-gray-700">{p.body}</p>
+              {/* 규칙 검사에 쓰는 값: 글자 수(기준은 backend/app/steps/copy.py), 헤드카피 유형, 어미 배열 */}
+              <p className="mt-2 flex flex-wrap gap-1 text-[11px] text-gray-500">
+                <span
+                  className={`rounded px-1.5 py-0.5 ${p.headline.length > 20 ? "bg-danger-soft text-danger" : "bg-gray-100"}`}
+                >
+                  헤드 {p.headline.length}/20자
+                </span>
+                <span
+                  className={`rounded px-1.5 py-0.5 ${p.body.length > 110 ? "bg-danger-soft text-danger" : "bg-gray-100"}`}
+                >
+                  바디 {p.body.length}/110자
+                </span>
+                <span className="rounded bg-gray-100 px-1.5 py-0.5">유형 {p.headline_type}</span>
+                <span className="rounded bg-gray-100 px-1.5 py-0.5">어미 {p.ending_order}</span>
+              </p>
+              {/* 바뀐 Pod는 AI가 처음 쓴 문구를 접어 둔다 */}
+              {changed && before && (
+                <details onClick={(e) => e.stopPropagation()} className="mt-2 text-xs">
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-800">AI 원안 보기</summary>
+                  <div className="mt-1 rounded bg-white p-2 text-gray-500">
+                    {before.headline !== p.headline && <p className="font-semibold line-through">{before.headline}</p>}
+                    {before.body !== p.body && <p className="mt-0.5 line-through">{before.body}</p>}
+                  </div>
+                </details>
+              )}
+            </li>
+          );
+        })}
       </ol>
       <Rationale label="카피 기획 의도" text={content.rationale} />
     </>

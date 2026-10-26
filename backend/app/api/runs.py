@@ -31,7 +31,7 @@ class ReviseRequest(BaseModel):
     slot: str = MAIN_SLOT  # 이미지 단계는 Pod 이름
     index: int  # 고칠 안 번호
     request: str = Field(min_length=1, max_length=500)  # 사람의 수정 요청
-    pod: PodName | None = None  # 카피 단계: 고칠 Pod
+    pods: list[PodName] = []  # 카피 단계: 고칠 Pod들 (여러 개 또는 전체)
 
 
 class SelectRequest(BaseModel):
@@ -133,7 +133,7 @@ def select_option(run_id: str, step_name: str, body: SelectRequest) -> RunState:
 async def revise_option(run_id: str, step_name: str, body: ReviseRequest) -> RunState:
     """고른 안의 일부를 사람의 요청대로 고친다.
     - 이미지: 그 이미지를 고친 새 안을 슬롯에 추가하고 선택한다 (원래 안은 남는다).
-    - 카피: 그 안에서 Pod 하나만 다시 쓰고, 수정본으로 선택한다."""
+    - 카피: 그 안에서 지정한 Pod들(전체 포함)만 다시 쓰고, 수정본으로 선택한다."""
     step = _get_step(step_name)
     if not isinstance(step, ImageStep | CopyStep):
         raise HTTPException(400, "수정 요청은 카피와 이미지 단계에서만 할 수 있습니다.")
@@ -157,14 +157,15 @@ async def revise_option(run_id: str, step_name: str, body: ReviseRequest) -> Run
                 slot.options.append(step.make_option(run, body.slot, f"{body.index + 1}번 수정 · {request}", revised))
                 slot.selected, slot.edited = len(slot.options) - 1, None
             else:
-                if body.pod is None:
-                    raise HTTPException(400, "카피 수정 요청에는 고칠 Pod(pod)가 필요합니다.")
+                if not body.pods:
+                    raise HTTPException(400, "카피 수정 요청에는 고칠 Pod(pods)가 필요합니다.")
                 # 이미 직접 고친 수정본이 있으면 그 위에 고친다
                 base = slot.edited if slot.selected == body.index and slot.edited else slot.options[body.index]
                 copy = CopyOption.model_validate(base.content)
-                if body.pod not in [p.pod for p in copy.pods]:
-                    raise HTTPException(400, f"이 카피안에 없는 Pod입니다: {body.pod}")
-                revised = await step.revise_pod(run, copy, body.pod, request)
+                unknown = set(body.pods) - {p.pod for p in copy.pods}
+                if unknown:
+                    raise HTTPException(400, f"이 카피안에 없는 Pod입니다: {', '.join(sorted(unknown))}")
+                revised = await step.revise_pods(run, copy, body.pods, request)
                 slot.selected, slot.edited = body.index, step.make_option(run, body.slot, base.angle, revised)
         except HTTPException:
             raise

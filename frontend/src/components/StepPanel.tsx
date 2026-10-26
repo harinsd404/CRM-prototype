@@ -167,14 +167,14 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             onSelect={(index, edited) =>
               confirmReset() && call(slotName, () => api.select(run.id, step, slotName, index, edited))
             }
-            onRevise={(index, request, pod) =>
+            onRevise={(index, request, pods) =>
               confirmReset()
                 ? call(multiSlot ? `${slotName}#${index}` : slotName, () =>
                     api.revise(run.id, step, {
                       slot: slotName,
                       index,
                       request,
-                      pod,
+                      pods,
                     }),
                   )
                 : Promise.resolve(false)
@@ -245,7 +245,7 @@ interface SlotViewProps {
   elapsed: number;
   onGenerate: ((feedback?: string) => Promise<boolean>) | null; // 이미지 단계: 이 Pod만 (요청 반영해) 다시 생성
   onSelect: (index: number, edited?: StepContents[StepName]) => void;
-  onRevise: (index: number, request: string, pod?: string) => Promise<boolean>;
+  onRevise: (index: number, request: string, pods?: string[]) => Promise<boolean>;
 }
 
 function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate, onSelect, onRevise }: SlotViewProps) {
@@ -330,8 +330,8 @@ function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate,
                   index={i}
                   step={step}
                   option={shown}
+                  original={selected && slot.edited ? option : null}
                   selected={selected}
-                  edited={selected && slot.edited !== null}
                   disabled={disabled}
                   onSelect={() => !selected && onSelect(i)}
                 />
@@ -366,7 +366,7 @@ function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate,
           content={(slot.edited ?? slot.options[slot.selected]).content as CopyContent}
           busy={busy === slotName}
           disabled={disabled}
-          onSubmit={(pod, request) => onRevise(slot.selected!, request, pod)}
+          onSubmit={(pods, request) => onRevise(slot.selected!, request, pods)}
         />
       )}
       {slot?.selected != null && step === "copy" && (
@@ -389,7 +389,7 @@ function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate,
   );
 }
 
-/** 고른 카피안에서 Pod 하나를 골라 AI에게 수정을 요청한다. 나머지 Pod는 그대로 둔다. */
+/** 고른 카피안에서 Pod를 하나 이상(또는 전체) 골라 AI에게 수정을 요청한다. 고르지 않은 Pod는 그대로 둔다. */
 function CopyReviseBox({
   content,
   busy,
@@ -399,50 +399,63 @@ function CopyReviseBox({
   content: CopyContent;
   busy: boolean;
   disabled: boolean;
-  onSubmit: (pod: string, request: string) => Promise<boolean>;
+  onSubmit: (pods: string[], request: string) => Promise<boolean>;
 }) {
-  const [pod, setPod] = useState<string | null>(null);
-  const target = content.pods.find((p) => p.pod === pod);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const targets = content.pods.filter((p) => chosen.includes(p.pod));
+  const all = targets.length === content.pods.length;
+  const toggle = (pod: string) =>
+    setChosen((prev) => (prev.includes(pod) ? prev.filter((p) => p !== pod) : [...prev, pod]));
+  const chip = (active: boolean) =>
+    `rounded-full border px-3 py-1 text-xs disabled:opacity-40 ${
+      active ? "border-primary bg-primary-soft font-semibold text-primary-pressed" : "bg-white hover:bg-gray-100"
+    }`;
 
   return (
     <div className="mt-5 rounded-lg border p-4">
       <p className="flex items-center gap-1.5 text-sm font-semibold text-ink">
         <PencilIcon className="h-4 w-4 text-primary" />
-        Pod별 수정 요청
+        카피 수정 요청
       </p>
-      <p className="mt-1 text-xs text-gray-500">고칠 Pod를 고르고 요청을 쓰면 AI가 그 Pod 카피만 다시 씁니다.</p>
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <p className="mt-1 text-xs text-gray-500">
+        고칠 Pod를 여러 개 고르거나 "전체"를 고르고 요청을 쓰면, AI가 고른 Pod 카피만 다시 씁니다.
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <button
+          onClick={() => setChosen(all ? [] : content.pods.map((p) => p.pod))}
+          disabled={disabled}
+          className={chip(all)}
+        >
+          전체
+        </button>
+        <span className="mx-1 h-4 w-px bg-gray-300" />
         {content.pods.map((p) => (
-          <button
-            key={p.pod}
-            onClick={() => setPod(p.pod === pod ? null : p.pod)}
-            disabled={disabled}
-            className={`rounded-full border px-3 py-1 text-xs disabled:opacity-40 ${
-              p.pod === pod
-                ? "border-primary bg-primary-soft font-semibold text-primary-pressed"
-                : "bg-white hover:bg-gray-100"
-            }`}
-          >
+          <button key={p.pod} onClick={() => toggle(p.pod)} disabled={disabled} className={chip(chosen.includes(p.pod))}>
+            {chosen.includes(p.pod) && "✓ "}
             {p.pod}
           </button>
         ))}
       </div>
-      {target && (
+      {targets.length > 0 && (
         <div className="mt-3 space-y-2">
-          <div className="rounded-md bg-gray-100 p-3 text-sm">
-            <p className="font-semibold">{target.headline}</p>
-            <p className="mt-1 text-gray-700">{target.body}</p>
-          </div>
+          <ul className="space-y-1.5 rounded-md bg-gray-100 p-3 text-sm">
+            {targets.map((p) => (
+              <li key={p.pod}>
+                <span className="mr-2 text-xs font-semibold text-primary">{p.pod}</span>
+                <span className="font-semibold">{p.headline}</span>
+                <p className="text-gray-700">{p.body}</p>
+              </li>
+            ))}
+          </ul>
           <RequestBox
-            key={target.pod}
             placeholder="예: 헤드카피를 더 짧고 강하게, 수치를 앞에 두기, 바디에 사용 장면 넣기"
-            submitLabel={`${target.pod} 카피 수정`}
+            submitLabel={all ? "전체 카피 수정" : `${targets.length}개 Pod 카피 수정`}
             busy={busy}
             disabled={disabled}
             onSubmit={async (request) => {
-              if (await onSubmit(target.pod, request)) setPod(null);
+              if (await onSubmit(targets.map((p) => p.pod), request)) setChosen([]);
             }}
-            onCancel={() => setPod(null)}
+            onCancel={() => setChosen([])}
           />
         </div>
       )}
