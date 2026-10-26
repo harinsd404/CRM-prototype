@@ -16,17 +16,17 @@ export default function OptionCard({ index, step, option, selected, edited, disa
       onClick={onSelect}
       disabled={disabled}
       className={`flex flex-col rounded-xl border-2 p-4 text-left text-sm transition hover:border-gray-400 disabled:cursor-wait ${
-        selected ? "border-blue-500 ring-2 ring-blue-100" : "border-gray-200"
+        selected ? "border-primary ring-2 ring-primary-soft" : "border-gray-200"
       }`}
     >
       <span className="text-xs text-gray-400">
         {index + 1}번 · {option.angle}
-        {edited && <span className="ml-1 text-blue-600">· 수정됨</span>}
+        {edited && <span className="ml-1 text-primary">· 수정됨</span>}
       </span>
 
       {/* 원본 프롬프트 규칙을 코드로 검사한 결과. 사람이 고를 때 참고한다 */}
       {option.warnings.length > 0 && (
-        <ul className="mt-2 space-y-0.5 rounded-lg bg-amber-50 p-2 text-xs text-amber-800">
+        <ul className="mt-2 space-y-0.5 rounded-lg bg-warning-soft p-2 text-xs text-warning">
           {option.warnings.map((w, i) => (
             <li key={i}>⚠ {w}</li>
           ))}
@@ -70,7 +70,7 @@ function CopyBody({ content }: { content: CopyContent }) {
       <ol className="space-y-3">
         {content.pods.map((p, i) => (
           <li key={i}>
-            <p className="text-xs font-semibold text-blue-600">{p.eyebrow}</p>
+            <p className="text-xs font-semibold text-primary">{p.eyebrow}</p>
             <p className="font-semibold">
               {p.headline}{" "}
               <span className="font-normal text-gray-400">

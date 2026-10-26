@@ -13,7 +13,7 @@ interface Props {
 
 function Count({ length, max }: { length: number; max: number }) {
   return (
-    <span className={`text-xs ${length > max ? "font-semibold text-red-600" : "text-gray-400"}`}>
+    <span className={`text-xs ${length > max ? "font-semibold text-danger" : "text-gray-400"}`}>
       {length}/{max}
     </span>
   );
@@ -40,7 +40,7 @@ export default function CopyEditBox({ content, disabled, onSave }: Props) {
     <div className="mt-4 space-y-4 rounded-lg border bg-gray-50 p-4">
       {pods.map((p, i) => (
         <div key={p.pod} className="space-y-1">
-          <p className="text-xs font-semibold text-blue-600">{p.pod}</p>
+          <p className="text-xs font-semibold text-primary">{p.pod}</p>
           <div className="flex items-center gap-2">
             <input
               value={p.headline}
@@ -64,7 +64,7 @@ export default function CopyEditBox({ content, disabled, onSave }: Props) {
         <button
           onClick={() => onSave({ ...content, pods })}
           disabled={disabled || !changed}
-          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
         >
           수정 저장
         </button>
@@ -73,7 +73,7 @@ export default function CopyEditBox({ content, disabled, onSave }: Props) {
             setPods(content.pods);
             setOpen(false);
           }}
-          className="rounded-lg border px-4 py-2 text-sm"
+          className="rounded-lg border bg-white px-4 py-2 text-sm hover:bg-gray-100"
         >
           닫기
         </button>

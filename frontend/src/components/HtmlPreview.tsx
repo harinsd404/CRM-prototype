@@ -38,7 +38,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
           <button
             onClick={render}
             disabled={!ready || busy}
-            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
           >
             {busy ? "조립 중…" : run.html ? "다시 조립" : "시안 조립"}
           </button>
@@ -46,7 +46,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
       </div>
 
       {!ready && <p className="mt-3 text-sm text-gray-500">①~③ 단계(이미지는 Pod 5개 모두)에서 선택하면 조립할 수 있습니다.</p>}
-      {error && <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mt-3 rounded bg-danger-soft p-3 text-sm text-danger-strong">{error}</p>}
 
       {run.html && (
         // 시안은 폭 1440px 고정 페이지라 가로 스크롤로 본다

@@ -39,16 +39,16 @@ export default function EditBox({ content, disabled, onSave }: Props) {
         rows={14}
         className="w-full rounded-lg border bg-gray-50 p-3 font-mono text-xs"
       />
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex gap-2">
         <button
           onClick={save}
           disabled={disabled || text === original}
-          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
         >
           수정 저장
         </button>
-        <button onClick={() => setOpen(false)} className="rounded-lg border px-4 py-2 text-sm">
+        <button onClick={() => setOpen(false)} className="rounded-lg border bg-white px-4 py-2 text-sm hover:bg-gray-100">
           닫기
         </button>
       </div>

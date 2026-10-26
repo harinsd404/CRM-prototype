@@ -60,20 +60,20 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
         <div className="flex items-center gap-3">
           <h2 className="font-semibold">{STEP_LABELS[step]}</h2>
           {isStepComplete(state) && (
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">선택 완료</span>
+            <span className="rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary-pressed">선택 완료</span>
           )}
         </div>
         <button
           onClick={generateAll}
           disabled={locked || busy !== null}
-          className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+          className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
         >
           {busy === "all" ? "생성 중…" : slotNames.length ? (multiSlot ? "전체 다시 생성" : "다시 생성") : "안 생성"}
         </button>
       </div>
 
       {locked && <p className="mt-3 text-sm text-gray-500">앞 단계에서 안을 먼저 선택하세요.</p>}
-      {error && <p className="mt-3 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      {error && <p className="mt-3 rounded bg-danger-soft p-3 text-sm text-danger-strong">{error}</p>}
 
       {slotNames.map((slotName, i) => (
         <SlotView
@@ -119,13 +119,13 @@ function SlotView({ step, run, slotName, title, slot, busy, onRegenerate, onSele
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold">
             {title}
-            {slot.selected !== null && <span className="ml-2 font-normal text-blue-600">{slot.selected + 1}번 선택</span>}
+            {slot.selected !== null && <span className="ml-2 font-normal text-primary">{slot.selected + 1}번 선택</span>}
           </h3>
           {onRegenerate && (
             <button
               onClick={onRegenerate}
               disabled={disabled}
-              className="rounded-lg border px-3 py-1.5 text-xs font-medium disabled:opacity-40"
+              className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium disabled:opacity-40 hover:bg-gray-100"
             >
               {busy === slotName ? "생성 중…" : "이 Pod만 다시 생성"}
             </button>

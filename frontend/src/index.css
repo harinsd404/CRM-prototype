@@ -1,1 +1,62 @@
 @import "tailwindcss";
+
+/* 디자인 토큰. 회색은 Tailwind gray 단계를 덮어써서 기존 클래스(gray-500 등)가 그대로 새 색을 쓴다.
+   나머지는 용도 이름으로 둔다: primary(주요 동작) / ink(제목) / danger(오류) / success / warning(규칙 경고) */
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+
+  --color-gray-50: #fafafb;
+  --color-gray-100: #f8f8f9;
+  --color-gray-200: #eef0f2;
+  --color-gray-250: #e6e8ea;
+  --color-gray-300: #dddee3;
+  --color-gray-400: #bbbcc2;
+  --color-gray-500: #9497a0;
+  --color-gray-600: #70737c;
+  --color-gray-700: #595b66;
+  --color-gray-750: #414550;
+  --color-gray-800: #373b44;
+  --color-gray-850: #292c35;
+  --color-gray-900: #21242c;
+
+  --color-ink: #1e2e3d;
+
+  --color-primary: #257cff;
+  --color-primary-hover: #186eee;
+  --color-primary-pressed: #0c57cb;
+  --color-primary-soft: #e5f0ff;
+
+  --color-danger: #f44336;
+  --color-danger-strong: #c62828;
+  --color-danger-soft: #fee8e7;
+
+  --color-success: #00bf40;
+  --color-success-soft: #ecf8ec;
+
+  --color-warning: #a15c00;
+  --color-warning-soft: #fff4e0;
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--color-gray-250);
+  }
+
+  body {
+    background-color: var(--color-gray-50);
+    color: var(--color-gray-900);
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: 2px solid var(--color-primary);
+    outline-offset: -1px;
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+}

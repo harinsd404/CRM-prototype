@@ -89,7 +89,7 @@ backend/
   assets/product/        공식 제품 사진 closed_front / closed_back / unfolded (+ closed_views, color_lineup, style_anchor)
   assets/image_pool/     pool 모드용 이미지 ({Pod 영문명}/{화면비}_*.png)
   scripts/save_pool.py   실행 하나의 이미지를 image_pool에 저장
-  assets/fonts/          SamsungOne 폰트 (없으면 sans-serif)
+  assets/fonts/          SamsungOneArabic-300~700.ttf (영문·숫자만, 한글은 시스템 폰트로 대체. git 제외)
   data/runs/             실행 기록 (git 제외)
 frontend/
   src/ App.tsx api.ts types.ts components/

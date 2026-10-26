@@ -39,10 +39,10 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="min-h-screen">
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <h1 className="text-lg font-bold">CRM 시안 생성 프로토타입</h1>
+          <h1 className="text-lg font-bold text-ink">CRM 시안 생성 프로토타입</h1>
           {run && (
             <button onClick={reset} className="text-sm text-gray-500 hover:text-gray-900">
               새로 시작
@@ -52,7 +52,7 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
-        {loadError && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{loadError}</p>}
+        {loadError && <p className="rounded bg-danger-soft p-3 text-sm text-danger-strong">{loadError}</p>}
 
         {!run ? (
           <InputForm onCreated={startRun} />

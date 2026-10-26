@@ -7,7 +7,7 @@ interface Props {
   onCreated: (run: RunState) => void;
 }
 
-const fieldClass = "mt-1 w-full rounded-lg border p-2.5 text-sm";
+const fieldClass = "mt-1 w-full rounded-lg border bg-white p-2.5 text-sm";
 
 export default function InputForm({ onCreated }: Props) {
   const [input, setInput] = useState<RunInput>({
@@ -111,10 +111,10 @@ export default function InputForm({ onCreated }: Props) {
         ))}
       </fieldset>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-danger">{error}</p>}
       <button
         disabled={busy}
-        className="rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+        className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
       >
         {busy ? "만드는 중…" : "시작하기"}
       </button>

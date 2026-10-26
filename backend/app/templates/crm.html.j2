@@ -5,13 +5,17 @@
   <meta charset="utf-8">
   <title>{{ product_name }}</title>
   <style>
-    /* 폰트 파일은 backend/assets/fonts/ 에 넣는다. 없으면 sans-serif로 표시된다. */
-    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOne-400.woff2') format('woff2'); font-weight:400; font-display:swap; }
-    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOne-700.woff2') format('woff2'); font-weight:700; font-display:swap; }
+    /* 폰트 파일은 backend/assets/fonts/ 에 둔다 (git 제외).
+       SamsungOneArabic에는 한글 글자가 없어 영문·숫자만 SamsungOne으로 그리고, 한글은 다음 폰트로 넘어간다. */
+    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOneArabic-300.ttf') format('truetype'); font-weight:300; font-display:swap; }
+    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOneArabic-400.ttf') format('truetype'); font-weight:400; font-display:swap; }
+    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOneArabic-450.ttf') format('truetype'); font-weight:450; font-display:swap; }
+    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOneArabic-600.ttf') format('truetype'); font-weight:600; font-display:swap; }
+    @font-face { font-family:'SamsungOne'; src:url('/api/assets/fonts/SamsungOneArabic-700.ttf') format('truetype'); font-weight:700; font-display:swap; }
 
     html, body, section, div, p, h1, h2, img { box-sizing: border-box; }
     html { background:#ffffff; }
-    body { margin:0 auto; width:1440px; background:#ffffff; font-family:'SamsungOne', sans-serif; color:#000000; }
+    body { margin:0 auto; width:1440px; background:#ffffff; font-family:'SamsungOne', 'SamsungOneKorean', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; color:#000000; }
 
     section { padding:80px 0; }
     .bg-white { background:#ffffff; }

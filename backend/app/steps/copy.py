@@ -57,7 +57,8 @@ async def shorten_headlines(copy: CopyOption) -> None:
 
 
 def _compact(text: str) -> str:
-    return "".join(text.split())
+    """원문 대조용: 공백과 ®·™ 표기 차이는 무시한다 (모델이 공식 표기에 ®를 붙이곤 함)."""
+    return "".join(text.split()).replace("®", "").replace("™", "")
 
 
 def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) -> list[str]:
