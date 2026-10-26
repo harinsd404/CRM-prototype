@@ -1,12 +1,11 @@
 import { useState, type FormEvent } from "react";
 import { api } from "../api";
+import { DEFAULT_SPECS } from "../defaults";
 import { POD_NAMES, type Mood, type PodName, type RunInput, type RunState } from "../types";
 
 interface Props {
   onCreated: (run: RunState) => void;
 }
-
-const EMPTY_SPECS = Object.fromEntries(POD_NAMES.map((pod) => [pod, ""])) as Record<PodName, string>;
 
 const fieldClass = "mt-1 w-full rounded-lg border p-2.5 text-sm";
 
@@ -18,7 +17,7 @@ export default function InputForm({ onCreated }: Props) {
     used_first_pod: null,
     product_name: "",
     colors: "",
-    specs: EMPTY_SPECS,
+    specs: DEFAULT_SPECS,
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,11 +93,20 @@ export default function InputForm({ onCreated }: Props) {
       </div>
 
       <fieldset className="space-y-3">
-        <legend className="text-sm font-medium">Pod별 스펙 (Fact) — 비워 두면 "(입력 데이터 없음)"으로 처리</legend>
+        <legend className="flex w-full items-center justify-between gap-4 text-sm font-medium">
+          <span>Pod별 스펙 (Fact) — 기본값이 채워져 있고 고쳐 쓸 수 있음. 비워 두면 "(입력 데이터 없음)"으로 처리</span>
+          <button
+            type="button"
+            onClick={() => set("specs", DEFAULT_SPECS)}
+            className="shrink-0 text-sm text-gray-500 underline hover:text-gray-900"
+          >
+            기본값으로 되돌리기
+          </button>
+        </legend>
         {POD_NAMES.map((pod) => (
           <label key={pod} className="flex items-start gap-3">
             <span className="w-24 shrink-0 pt-2.5 text-sm text-gray-600">{pod}</span>
-            <textarea value={input.specs[pod]} onChange={(e) => setSpec(pod, e.target.value)} rows={2} className={fieldClass} />
+            <textarea value={input.specs[pod]} onChange={(e) => setSpec(pod, e.target.value)} rows={3} className={fieldClass} />
           </label>
         ))}
       </fieldset>
