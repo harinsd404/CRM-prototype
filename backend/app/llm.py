@@ -1,13 +1,28 @@
 from functools import lru_cache
 
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import BaseChatModel
 
 from app.config import settings
 
 
 @lru_cache
-def get_chat_model() -> ChatOpenAI:
-    """OpenAI 호환 서버(vLLM, Ollama)에 붙는 채팅 모델. 모델 교체는 .env만 바꾸면 된다."""
+def get_chat_model() -> BaseChatModel:
+    """단계들이 쓰는 채팅 모델. 모델 교체는 .env만 바꾸면 된다."""
+    if settings.llm_provider == "vertex":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        # 회사 GCP 프로젝트의 Vertex AI로 호출한다 (외부 API 키를 쓰지 않음, ADC 인증).
+        return ChatGoogleGenerativeAI(
+            model=settings.vertex_text_model,
+            vertexai=True,
+            project=settings.google_cloud_project,
+            location=settings.google_cloud_location,
+            temperature=settings.llm_temperature,
+            timeout=120,
+        )
+
+    from langchain_openai import ChatOpenAI
+
     extra_body = None
     if settings.llm_disable_thinking:
         # Qwen3의 생각 모드를 끈다 (vLLM chat template 옵션). 다른 모델에서는 무시된다.

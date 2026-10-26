@@ -23,17 +23,19 @@ pnpm dev
 
 | 단계 | 설정 |
 |---|---|
-| 로컬 LLM | `brew install ollama && ollama pull qwen3:8b` 후 `.env`에서 `LLM_PROVIDER=openai` |
-| Vertex 이미지 | 아래 참고 |
+| 텍스트 (①②③ 연출안) | Vertex AI Gemini: `LLM_PROVIDER=vertex` (아래 참고) |
+| 이미지 | Vertex AI Gemini: `IMAGE_PROVIDER=vertex` (아래 참고) |
 | 시연 대비 이미지 | `backend/assets/image_pool/`에 이미지를 넣고 `IMAGE_PROVIDER=pool` |
+| (선택) 로컬 오픈 모델 | `brew install ollama && ollama pull qwen3:8b` 후 `LLM_PROVIDER=openai` |
 
-### Vertex AI Gemini 이미지
+### Vertex AI Gemini
 
 1. gcloud CLI 설치 후 로그인: `gcloud auth application-default login`
-2. `backend/assets/product/`에 공식 제품 사진을 넣는다: `closed_front`, `closed_back`, `unfolded` (.png/.jpg/.webp).
+2. `backend/.env`: `GOOGLE_CLOUD_PROJECT=<프로젝트 ID>`, `LLM_PROVIDER=vertex`
+   (모델은 `VERTEX_TEXT_MODEL`, `VERTEX_IMAGE_MODEL`로 바꾼다)
+3. 이미지까지 쓰려면 `backend/assets/product/`에 공식 제품 사진을 넣는다: `closed_front`, `closed_back`, `unfolded` (.png/.jpg/.webp).
    P2의 스타일 앵커(②)를 쓰려면 `style_anchor`도 넣는다. (git에는 올라가지 않음)
-3. `backend/.env`: `IMAGE_PROVIDER=vertex`, `GOOGLE_CLOUD_PROJECT=<프로젝트 ID>`
-4. `backend/app/prompts/image_model.md`의 `{렌즈 수}` 같은 제품별 자리를 채운다.
+4. `backend/app/prompts/image_model.md`의 `{렌즈 수}` 같은 제품별 자리를 채우고 `IMAGE_PROVIDER=vertex`
 
 ## 프롬프트 수정
 

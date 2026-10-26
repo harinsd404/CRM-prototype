@@ -79,7 +79,7 @@ class TextStep(Step):
 
 
 async def invoke_structured(prompt_name: str, schema: type[BaseModel], variables: dict[str, str]) -> BaseModel:
-    # json_schema 방식이면 vLLM이 서버에서 JSON 형식을 강제한다 (경량 모델의 형식 깨짐 방지).
+    # json_schema 방식이면 서버(Vertex, vLLM)가 JSON 형식을 강제한다 (형식 깨짐 방지).
     model = get_chat_model().with_structured_output(schema, method="json_schema")
     chain = load_prompt(prompt_name) | model
     return await chain.ainvoke(variables)

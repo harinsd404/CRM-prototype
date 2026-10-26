@@ -19,6 +19,6 @@ def health() -> dict[str, str]:
     return {
         "status": "ok",
         "llm_provider": settings.llm_provider,
-        "llm_model": settings.llm_model,
+        "llm_model": settings.vertex_text_model if settings.llm_provider == "vertex" else settings.llm_model,
         "image_provider": settings.image_provider,
     }
