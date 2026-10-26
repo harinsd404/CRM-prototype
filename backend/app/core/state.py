@@ -14,8 +14,8 @@ MAIN_SLOT = "main"
 
 class RunInput(BaseModel):
     target_id: str = Field(default="P1", description="타겟 구분 (P1/P2/P3)")
-    persona: str = Field(min_length=1, description="타겟 페르소나 (관심사 / 소구 강도)")
-    mood: Mood
+    persona: str = Field(min_length=1, description="타겟 페르소나 (관심사)")
+    mood: Mood  # 소구 강도 (HOT / WARM / COLD)
     used_first_pod: PodName | None = Field(default=None, description="앞선 타겟에서 이미 쓴 1순위 Pod")
     product_name: str = Field(min_length=1, description="영문 공식 제품명")
     colors: str = Field(min_length=1, description="컬러 라인업 (쉼표로 구분)")
@@ -38,7 +38,7 @@ class RunInput(BaseModel):
         return "\n".join(
             [
                 f"- 타겟 페르소나 : {self.persona}",
-                f"- 무드 : {self.mood}",
+                f"- 소구 강도(무드) : {self.mood}",
                 f"- 이미 사용된 1순위 Pod : {self.used_first_pod or '없음'}",
                 f"- 제품명 : {self.product_name}",
                 f"- 컬러 라인업 : {self.colors}",

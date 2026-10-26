@@ -48,7 +48,7 @@ export default function InputForm({ onCreated }: Props) {
           <input value={input.target_id} onChange={(e) => set("target_id", e.target.value)} required className={fieldClass} />
         </label>
         <label className="block">
-          <span className="text-sm font-medium">무드</span>
+          <span className="text-sm font-medium">소구 강도</span>
           <select value={input.mood} onChange={(e) => set("mood", e.target.value as Mood)} className={fieldClass}>
             <option>HOT</option>
             <option>WARM</option>
@@ -72,7 +72,7 @@ export default function InputForm({ onCreated }: Props) {
 
       <label className="block">
         <span className="text-sm font-medium">
-          타겟 페르소나 (관심사 / 소구 강도) <span className="text-danger">*</span>
+          타겟 페르소나 (관심사) <span className="text-danger">*</span>
         </span>
         <textarea
           value={input.persona}

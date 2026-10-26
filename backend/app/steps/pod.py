@@ -50,7 +50,7 @@ class PodStep(TextStep):
     prompt_name = "pod"
     angles = [
         "타겟의 관심사에 가장 직결되는 Pod를 1순위로 두는 구성",
-        "무드와 소구 강도의 감성을 앞세우는 구성",
+        "소구 강도(HOT / WARM / COLD)에 맞는 감성을 앞세우는 구성",
         "구매 결정까지의 흐름(관심 → 확신 → 행동)을 따르는 구성",
     ]
 

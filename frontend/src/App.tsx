@@ -71,7 +71,7 @@ export default function App() {
             <section className="rounded-xl border bg-white p-5 text-sm">
               <p className="text-xs text-gray-400">실행 {run.id}</p>
               <p className="mt-2">
-                <span className="font-semibold">{run.input.target_id}</span> {run.input.persona} · {run.input.mood}
+                <span className="font-semibold">{run.input.target_id}</span> {run.input.persona} · 소구 강도 {run.input.mood}
               </p>
               <p className="mt-1 text-gray-600">
                 {run.input.product_name} · {run.input.colors} · 이미 사용된 1순위 Pod:{" "}

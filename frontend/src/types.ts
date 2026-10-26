@@ -26,6 +26,7 @@ export const LAYOUT_LABELS: Record<Layout, string> = {
   L4: "둥근 이미지 카드",
   L5: "좌 텍스트 · 우 이미지",
 };
+// 소구 강도. 원본 P1 입력 양식에서는 "무드"로 적혀 있다
 export type Mood = "HOT" | "WARM" | "COLD";
 
 export interface PodContent {
