@@ -71,7 +71,7 @@ def check_image_budget(needed: int) -> None:
 
 
 def count_image_call() -> None:
-    """실제로 이미지 모델을 호출할 때마다 센다 (재시도도 비용이므로 포함)."""
+    """이미지 모델이 응답한 호출마다 센다 (다시 생성·재시도도 포함, 429 거절은 제외)."""
     path = _usage_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     usage = {"date": date.today().isoformat(), "images": images_used_today() + 1}

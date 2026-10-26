@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { api } from "../api";
 import {
-  MAIN_SLOT,
   STEP_LABELS,
   STEP_ORDER,
   isStepComplete,
+  selectedPodOrder,
   type CopyContent,
   type PodContent,
   type RunState,
@@ -13,6 +13,7 @@ import {
   type StepName,
 } from "../types";
 import CopyEditBox from "./CopyEditBox";
+import { RefreshIcon, SparkleIcon, Spinner } from "./icons";
 import OptionCard from "./OptionCard";
 import PodEditBox from "./PodEditBox";
 
@@ -48,11 +49,37 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
   const confirmReset = () =>
     !hasLaterWork || window.confirm("이 단계를 바꾸면 뒤 단계 결과가 초기화됩니다. 계속할까요?");
 
-  const generateAll = () => confirmReset() && call("all", () => api.generate(run.id, step));
+  // 이미지 단계는 Pod 하나에 1~3분이 걸려서, 한 번에 요청하지 않고 Pod별로 차례로 요청한다.
+  // 끝난 Pod부터 바로 화면에 나오고 진행 상황(2/5)이 보인다. 중간에 실패해도 앞의 Pod는 남는다.
+  const [progress, setProgress] = useState<{ pod: string; done: number; total: number } | null>(null);
+
+  const generateEachSlot = async () => {
+    const pods = selectedPodOrder(run);
+    setBusy("all");
+    setError(null);
+    try {
+      for (const [i, pod] of pods.entries()) {
+        setProgress({ pod, done: i, total: pods.length });
+        onChange(await api.generate(run.id, step, pod));
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setProgress(null);
+      setBusy(null);
+    }
+  };
+
+  const generateAll = () => {
+    if (!confirmReset()) return;
+    if (step === "image") generateEachSlot();
+    else call("all", () => api.generate(run.id, step));
+  };
+  const busyLabel = progress ? `${progress.pod} 생성 중 (${progress.done + 1}/${progress.total})` : "생성 중…";
 
   // 이미지 단계는 ①에서 정한 Pod 순서대로 보여준다
   const slotNames =
-    step === "image" ? podOrder(run).filter((pod) => pod in state.slots) : Object.keys(state.slots);
+    step === "image" ? selectedPodOrder(run).filter((pod) => pod in state.slots) : Object.keys(state.slots);
   const multiSlot = step === "image";
 
   return (
@@ -60,20 +87,37 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="font-semibold">{STEP_LABELS[step]}</h2>
-          {isStepComplete(state) && (
+          {isStepComplete(run, step) && (
             <span className="rounded-full bg-primary-soft px-2 py-0.5 text-xs text-primary-pressed">선택 완료</span>
           )}
         </div>
-        <button
-          onClick={generateAll}
-          disabled={locked || busy !== null}
-          className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-        >
-          {busy === "all" ? "생성 중…" : slotNames.length ? (multiSlot ? "전체 다시 생성" : "다시 생성") : "안 생성"}
-        </button>
+        {slotNames.length === 0 ? (
+          // 처음 생성: 눈에 띄는 주요 버튼
+          <button
+            onClick={generateAll}
+            disabled={locked || busy !== null}
+            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover active:bg-primary-pressed disabled:opacity-40"
+          >
+            {busy === "all" ? <Spinner /> : <SparkleIcon />}
+            {busy === "all" ? busyLabel : "안 생성"}
+          </button>
+        ) : (
+          // 이미 안이 있으면: 덮어쓰는 동작이라 한 단계 낮춘 보조 버튼
+          <button
+            onClick={generateAll}
+            disabled={locked || busy !== null}
+            className="flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+          >
+            {busy === "all" ? <Spinner /> : <RefreshIcon />}
+            {busy === "all" ? busyLabel : multiSlot ? "전체 다시 생성" : "다시 생성"}
+          </button>
+        )}
       </div>
 
       {locked && <p className="mt-3 text-sm text-gray-500">앞 단계에서 안을 먼저 선택하세요.</p>}
+      {step === "image" && busy !== null && (
+        <p className="mt-3 text-sm text-gray-500">이미지는 Pod 하나에 1~3분 걸립니다. 끝난 Pod부터 아래에 바로 나타납니다.</p>
+      )}
       {error && <p className="mt-3 rounded bg-danger-soft p-3 text-sm text-danger-strong">{error}</p>}
 
       {slotNames.map((slotName, i) => (
@@ -93,12 +137,6 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
       ))}
     </section>
   );
-}
-
-function podOrder(run: RunState): string[] {
-  const pod = run.steps.pod.slots[MAIN_SLOT];
-  const option = pod?.selected != null ? (pod.edited ?? pod.options[pod.selected]) : null;
-  return option ? option.content.items.map((item) => item.pod) : [];
 }
 
 interface SlotViewProps {
@@ -126,9 +164,11 @@ function SlotView({ step, run, slotName, title, slot, busy, onRegenerate, onSele
             <button
               onClick={onRegenerate}
               disabled={disabled}
-              className="rounded-lg border bg-white px-3 py-1.5 text-xs font-medium disabled:opacity-40 hover:bg-gray-100"
+              title="이 Pod만 다시 생성"
+              aria-label={`${slotName} 다시 생성`}
+              className="flex h-8 w-8 items-center justify-center rounded-full border bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40"
             >
-              {busy === slotName ? "생성 중…" : "이 Pod만 다시 생성"}
+              {busy === slotName ? <Spinner /> : <RefreshIcon />}
             </button>
           )}
         </div>

@@ -71,7 +71,7 @@ export default function App() {
 
             {STEP_ORDER.map((step, i) => {
               const previous = STEP_ORDER[i - 1];
-              const locked = previous !== undefined && !isStepComplete(run.steps[previous]);
+              const locked = previous !== undefined && !isStepComplete(run, previous);
               return <StepPanel key={step} step={step} run={run} locked={locked} onChange={setRun} />;
             })}
 

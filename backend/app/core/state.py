@@ -89,6 +89,13 @@ class RunState(BaseModel):
         assert option is not None, f"{step_name}/{slot} 단계가 선택되지 않았다"
         return option.content
 
+    def is_complete(self, step_name: str) -> bool:
+        state = self.steps[step_name]
+        if step_name == "image" and state.complete:
+            # 이미지는 Pod별로 차례로 생성하므로 일부 Pod만 있을 수 있다. 모든 Pod가 있어야 완료.
+            return set(state.slots) >= {item["pod"] for item in self.selected("pod")["items"]}
+        return state.complete
+
     def previous_step(self, step_name: str) -> str | None:
         index = STEP_ORDER.index(step_name)
         return STEP_ORDER[index - 1] if index > 0 else None

@@ -138,8 +138,7 @@ class VertexGeminiProvider:
         for wait in (*_RATE_LIMIT_WAITS, None):
             try:
                 async with _vertex_slots():
-                    count_image_call()
-                    return await asyncio.wait_for(
+                    response = await asyncio.wait_for(
                         _vertex_client().aio.models.generate_content(
                             model=settings.vertex_image_model,
                             contents=parts,
@@ -151,6 +150,8 @@ class VertexGeminiProvider:
                         ),
                         settings.image_timeout,
                     )
+                count_image_call()  # 429로 거절된 요청은 과금되지 않으므로 응답을 받은 것만 센다
+                return response
             except genai_errors.ClientError as e:
                 if e.code != 429 or wait is None:
                     raise

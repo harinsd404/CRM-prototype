@@ -52,7 +52,7 @@ async def generate_step(run_id: str, step_name: str, slot: str | None = None) ->
     run = _get_run(run_id)
 
     previous = run.previous_step(step_name)
-    if previous and not run.steps[previous].complete:
+    if previous and not run.is_complete(previous):
         raise HTTPException(400, f"먼저 '{previous}' 단계에서 안을 선택해야 합니다.")
 
     all_slots = step.slots(run)
@@ -110,7 +110,7 @@ def select_option(run_id: str, step_name: str, body: SelectRequest) -> RunState:
 @router.post("/{run_id}/render", response_model=RunState)
 def render(run_id: str) -> RunState:
     run = _get_run(run_id)
-    missing = [name for name in STEP_ORDER if not run.steps[name].complete]
+    missing = [name for name in STEP_ORDER if not run.is_complete(name)]
     if missing:
         raise HTTPException(400, f"아직 선택하지 않은 단계가 있습니다: {', '.join(missing)}")
 

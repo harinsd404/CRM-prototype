@@ -110,7 +110,18 @@ export interface RunState {
   html: string | null;
 }
 
-export function isStepComplete(step: StepState<StepName>): boolean {
-  const slots = Object.values(step.slots);
-  return slots.length > 0 && slots.every((slot) => slot.selected !== null);
+/** ①에서 고른(또는 고친) Pod 순서. 아직 고르지 않았으면 빈 목록. */
+export function selectedPodOrder(run: RunState): PodName[] {
+  const pod = run.steps.pod.slots[MAIN_SLOT];
+  const option = pod?.selected != null ? (pod.edited ?? pod.options[pod.selected]) : null;
+  return option ? option.content.items.map((item) => item.pod) : [];
+}
+
+/** backend RunState.is_complete와 같은 기준: 모든 슬롯을 골랐고, 이미지는 모든 Pod가 있어야 한다. */
+export function isStepComplete(run: RunState, step: StepName): boolean {
+  const slots = run.steps[step].slots;
+  const values = Object.values(slots);
+  const allSelected = values.length > 0 && values.every((slot) => slot.selected !== null);
+  if (step === "image") return allSelected && selectedPodOrder(run).every((pod) => pod in slots);
+  return allSelected;
 }

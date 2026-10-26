@@ -9,7 +9,7 @@ interface Props {
 
 /** ④ 최종 시안: 선택된 결과를 템플릿으로 조립하고 iframe으로 미리 본다. */
 export default function HtmlPreview({ run, onChange }: Props) {
-  const ready = STEP_ORDER.every((step) => isStepComplete(run.steps[step]));
+  const ready = STEP_ORDER.every((step) => isStepComplete(run, step));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
