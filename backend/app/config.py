@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     image_timeout: float = 120
 
     num_options: int = 3
+    # 폭주 방지 (app/core/guard.py)
+    generate_limit_per_minute: int = 10  # 생성 요청 수 상한 (연타·반복 호출 대비)
+    image_daily_limit: int = 100  # 하루 Vertex 이미지 호출 상한 (재시도 포함)
     data_dir: Path = BACKEND_DIR / "data" / "runs"
 
 

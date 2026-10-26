@@ -33,6 +33,7 @@
 - 어떤 단계를 다시 생성하거나 다시 선택하면 **그 뒤 단계는 초기화**된다. 앞 단계가 바뀌면 뒤 단계의 전제가 깨지기 때문.
 - N개 안은 한 번에 받지 않고 **안마다 다른 방향(angle)을 주어 N번 병렬 호출**한다. 경량 모델이 여러 안을 한 번에 쓰면 품질과 형식이 무너지기 때문.
 - 이미지에는 **글자를 넣지 않는다.** 카피는 HTML 템플릿에서 텍스트로 얹는다.
+- **폭주 방지** (`core/guard.py`): 한 실행에서 생성은 한 번에 하나(409), 생성 요청은 1분에 10회까지(429), Vertex 이미지 호출은 하루 100장까지(재시도 포함, `data/usage.json`). 화면의 버튼 잠금은 새로고침·다른 탭·스크립트에는 효과가 없어 서버에도 둔다.
 
 ## 3. 기술 스택과 선택 이유
 
@@ -74,6 +75,7 @@ backend/
       state.py           RunState / StepState / SlotState / Option, 단계 순서
       store.py           data/runs/{id}/state.json 읽기·쓰기
       prompts.py         prompts/*.md → ChatPromptTemplate
+      guard.py           폭주 방지: 실행별 잠금, 분당 요청 상한, 하루 이미지 상한
       render.py          HTML 합성용 JSON(P1 [8] 형식) + Jinja2 조립
     steps/
       base.py            Step 공통 틀 (슬롯마다 N개 병렬 생성 → postprocess 규칙 검사)

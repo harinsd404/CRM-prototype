@@ -6,7 +6,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ValidationError
 
-from app.core import store
+from app.config import settings
+from app.core import guard, store
 from app.core.render import build_html_input, render_crm
 from app.core.state import MAIN_SLOT, STEP_ORDER, RunInput, RunState
 from app.steps import STEPS, Step
@@ -58,19 +59,25 @@ async def generate_step(run_id: str, step_name: str, slot: str | None = None) ->
     if slot is not None and slot not in all_slots:
         raise HTTPException(400, f"'{step_name}' 단계에 없는 슬롯입니다: {slot} (가능: {', '.join(all_slots)})")
 
-    try:
-        generated = await step.generate(run, [slot] if slot else all_slots)
-    except Exception as e:
-        logger.exception("%s 단계 생성 실패", step_name)
-        raise HTTPException(502, f"'{step_name}' 생성에 실패했습니다: {e}") from e
+    slots = [slot] if slot else all_slots
+    guard.check_generate_rate()
+    if step_name == "image":
+        guard.check_image_budget(len(slots) * settings.num_options)
 
-    state = run.steps[step_name]
-    if slot is None:
-        state.slots = generated
-    else:
-        state.slots[slot] = generated[slot]
-    run.reset_after(step_name)
-    store.save_run(run)
+    with guard.run_lock(run_id):
+        try:
+            generated = await step.generate(run, slots)
+        except Exception as e:
+            logger.exception("%s 단계 생성 실패", step_name)
+            raise HTTPException(502, f"'{step_name}' 생성에 실패했습니다: {e}") from e
+
+        state = run.steps[step_name]
+        if slot is None:
+            state.slots = generated
+        else:
+            state.slots[slot] = generated[slot]
+        run.reset_after(step_name)
+        store.save_run(run)
     return run
 
 

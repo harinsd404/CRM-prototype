@@ -3,6 +3,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api import runs
 from app.config import BACKEND_DIR, settings
+from app.core.guard import images_used_today
 
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -21,4 +22,5 @@ def health() -> dict[str, str]:
         "llm_provider": settings.llm_provider,
         "llm_model": settings.vertex_text_model if settings.llm_provider == "vertex" else settings.llm_model,
         "image_provider": settings.image_provider,
+        "images_today": f"{images_used_today()}/{settings.image_daily_limit}",
     }

@@ -15,6 +15,7 @@ from google.genai import types
 
 from app.config import settings
 from app.core.domain import POD_ENGLISH
+from app.core.guard import count_image_call
 
 # 자리표시 이미지의 화면비별 크기
 IMAGE_SIZES: dict[str, tuple[int, int]] = {"1:1": (1024, 1024), "4:3": (1024, 768), "16:9": (1344, 768)}
@@ -137,6 +138,7 @@ class VertexGeminiProvider:
         for wait in (*_RATE_LIMIT_WAITS, None):
             try:
                 async with _vertex_slots():
+                    count_image_call()
                     return await asyncio.wait_for(
                         _vertex_client().aio.models.generate_content(
                             model=settings.vertex_image_model,
