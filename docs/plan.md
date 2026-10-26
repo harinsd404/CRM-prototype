@@ -84,7 +84,7 @@ backend/
       pod.md copy.md image_brief.md   단계별 LLM 프롬프트 (P1에서 분리)
       image_model.md     이미지 모델용 프롬프트 (P2)
     templates/crm.html.j2  P3 규칙을 옮긴 HTML 템플릿
-  assets/product/        공식 제품 사진 closed_front / closed_back / unfolded (+ style_anchor)
+  assets/product/        공식 제품 사진 closed_front / closed_back / unfolded (+ closed_views, color_lineup, style_anchor)
   assets/image_pool/     pool 모드용 이미지 ({Pod 영문명}/{화면비}_*.png)
   scripts/save_pool.py   실행 하나의 이미지를 image_pool에 저장
   assets/fonts/          SamsungOne 폰트 (없으면 sans-serif)
@@ -111,7 +111,7 @@ docs/plan.md
 1. 골격: 백엔드·프론트 연결, mock 모드로 ①~④ 전체 흐름 ✅
 2. 1~8주차 프롬프트 이식 (P1을 POD/카피/이미지 연출로 분리, P3를 템플릿으로, 자가 점검을 코드 검사로) ✅
 3. 텍스트를 Vertex Gemini로 연결, ①②③ 실제 생성 확인, 카피 프롬프트 보강 ✅
-4. Vertex Gemini 이미지 Provider ✅ → 인증·제품 사진 준비 후 실제 생성, P2의 제품별 자리({렌즈 수} 등) 채우기
+4. Vertex Gemini 이미지 Provider, 제품 사진 연결, P2 렌즈 정보 채우기, 실제 생성 확인 ✅
 5. HTML 화면 확인, 카피 수정 UI(JSON → 폼, 글자 수 표시) ✅
 6. 예외 처리(안별 재시도, 시간 제한, 동시 요청 제한), 시연 대비 이미지 풀 ✅ → 시연 리허설
 7. 영상 촬영, 이 문서를 바탕으로 "구조 및 선택 이유" 정리
@@ -132,4 +132,5 @@ docs/plan.md
 |---|---|
 | 생성 시간 | ① 약 7초, ② 약 12초, ③ 연출안 15건 약 15초 (이미지 생성 시간 제외) |
 | 생각 수준 | `VERTEX_THINKING_LEVEL=low`로 호출 1건이 12초 → 3초 |
+| 이미지 429 | Vertex 이미지 모델이 간헐적으로 429(공유 용량 부족)를 돌려준다. 동시 1장, 429면 5초·15초 뒤 다시 시도, 일부 안만 실패하면 성공한 안만 보여준다. Pod 하나(3장)에 약 1~2분 |
 | 멈춤 | 15건 동시 호출 중 2건이 50분 넘게 응답이 없었다. 클라이언트 timeout이 듣지 않아 `asyncio.wait_for`(45초)로 끊고 그 안만 다시 시도한다. 동시 요청은 6건으로 제한 |

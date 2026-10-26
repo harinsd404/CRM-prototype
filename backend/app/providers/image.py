@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import mimetypes
 import random
 import shutil
@@ -9,6 +10,7 @@ from typing import Protocol
 from uuid import uuid4
 
 from google import genai
+from google.genai import errors as genai_errors
 from google.genai import types
 
 from app.config import settings
@@ -17,6 +19,9 @@ from app.core.domain import POD_ENGLISH
 # 자리표시 이미지의 화면비별 크기
 IMAGE_SIZES: dict[str, tuple[int, int]] = {"1:1": (1024, 1024), "4:3": (1024, 768), "16:9": (1344, 768)}
 
+logger = logging.getLogger(__name__)
+
+_RATE_LIMIT_WAITS = (5, 15)  # 초
 _POOL_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
 _PALETTES = [("#f6d365", "#fda085"), ("#a1c4fd", "#c2e9fb"), ("#d4fc79", "#96e6a1"), ("#fbc2eb", "#a6c1ee")]
 
@@ -115,20 +120,7 @@ class VertexGeminiProvider:
         ]
         parts.append(prompt)
 
-        async with _vertex_slots():
-            response = await asyncio.wait_for(
-                _vertex_client().aio.models.generate_content(
-                    model=settings.vertex_image_model,
-                    contents=parts,
-                    config=types.GenerateContentConfig(
-                        response_modalities=["TEXT", "IMAGE"],
-                        image_config=types.ImageConfig(aspect_ratio=ratio),
-                        seed=seed,
-                    ),
-                ),
-                settings.image_timeout,
-            )
-
+        response = await self._call_with_backoff(parts, ratio, seed)
         candidate = response.candidates[0] if response.candidates else None
         for part in candidate.content.parts if candidate and candidate.content else []:
             if part.inline_data and part.inline_data.data:
@@ -139,6 +131,30 @@ class VertexGeminiProvider:
         # 이미지 대신 글만 왔거나(예: 첨부 누락 안내) 안전 필터에 걸린 경우
         reason = (response.text or "").strip() or (candidate.finish_reason if candidate else "응답 없음")
         raise RuntimeError(f"이미지가 생성되지 않았습니다: {reason}")
+
+    async def _call_with_backoff(self, parts: list[types.Part | str], ratio: str, seed: int) -> types.GenerateContentResponse:
+        """Vertex 이미지 모델은 공유 용량이 바쁠 때 429를 간헐적으로 돌려준다 (실측). 잠깐 기다렸다 다시 보낸다."""
+        for wait in (*_RATE_LIMIT_WAITS, None):
+            try:
+                async with _vertex_slots():
+                    return await asyncio.wait_for(
+                        _vertex_client().aio.models.generate_content(
+                            model=settings.vertex_image_model,
+                            contents=parts,
+                            config=types.GenerateContentConfig(
+                                response_modalities=["TEXT", "IMAGE"],
+                                image_config=types.ImageConfig(aspect_ratio=ratio),
+                                seed=seed,
+                            ),
+                        ),
+                        settings.image_timeout,
+                    )
+            except genai_errors.ClientError as e:
+                if e.code != 429 or wait is None:
+                    raise
+                logger.warning("Vertex 이미지 429, %d초 뒤 다시 시도합니다", wait)
+                await asyncio.sleep(wait)
+        raise AssertionError("unreachable")
 
 
 def get_image_provider() -> ImageProvider:

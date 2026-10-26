@@ -1,5 +1,5 @@
 <!-- 이미지 모델에 그대로 보내는 프롬프트 (원본 P2). 코드가 맨 뒤 # Input Data 아래에 Pod별 연출안을 붙인다.
-     {렌즈 수} 같은 자리는 제품이 정해지면 직접 채운다. LangChain을 거치지 않으므로 중괄호를 그대로 써도 된다. -->
+     렌즈 수·배열은 assets/product의 공식 제품 사진 기준으로 채웠다. LangChain을 거치지 않으므로 중괄호를 그대로 써도 된다. -->
 # Role & Objective
 
 You are a senior commercial product photographer for Samsung Electronics CRM campaigns.
@@ -11,7 +11,12 @@ Text will be added later in HTML.
 # Attachments
 
 ① Official product images — the single source of truth for the product design.
-Use the reference that matches [제품 상태] (closed front / closed back / unfolded).
+The first image matches [제품 상태] (closed front / closed back / unfolded).
+A second sheet may show the closed device from the side, back, and front — use it for thickness and frame shape.
+These product photos are all in Lavender.
+If [제품 컬러] is not 라벤더, a color line-up photo is also attached. Left to right it shows
+라벤더 (Lavender), 그라파이트 (Graphite), 크림 (Cream), 피스타치오 (Pistachio, the open device at the right).
+Take ONLY the body color from it; the design still comes from the product photos.
 ② Style anchor (if attached) — keep the same color grading, lighting, and background tone.
 If ① is missing, output only: "Attach the product reference image."
 
@@ -44,17 +49,16 @@ A. SILHOUETTE PROPORTION — the body is WIDE, not a narrow bar.
 
 B. REAR CAMERA COUNT — count out loud, then draw.
 
-- The rear camera island holds exactly {렌즈 수} ( {렌즈 수를 영어 단어로} ) lenses.
+- The rear camera island holds exactly 2 ( two ) lenses.
   Not one more, not one fewer.
-- Arrangement: {레퍼런스 ①에 보이는 배열을 그대로 기술, 예:
-  "two circular lenses stacked vertically, the upper one slightly larger,
+- Arrangement: two circular lenses of the same size stacked vertically,
   and one small LED flash dot below the lower lens.
-  The flash is NOT a lens — do not draw it as a third camera."}
+  The flash is NOT a lens — do not draw it as a third camera.
 - The island is a vertical capsule in the SAME matte color as the back panel,
   sitting nearly flush. It is NOT a glossy raised black module.
 - Island size, lens diameter, and spacing must match ① exactly.
 - Before finishing, count the circular lens elements in your image.
-  The count must equal {렌즈 수}.
+  The count must equal 2.
 
 # Composition Rules
 

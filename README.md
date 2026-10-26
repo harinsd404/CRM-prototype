@@ -33,9 +33,10 @@ pnpm dev
 1. gcloud CLI 설치 후 로그인: `gcloud auth application-default login`
 2. `backend/.env`: `GOOGLE_CLOUD_PROJECT=<프로젝트 ID>`, `LLM_PROVIDER=vertex`
    (모델은 `VERTEX_TEXT_MODEL`, `VERTEX_IMAGE_MODEL`로 바꾼다)
-3. 이미지까지 쓰려면 `backend/assets/product/`에 공식 제품 사진을 넣는다: `closed_front`, `closed_back`, `unfolded` (.png/.jpg/.webp).
-   P2의 스타일 앵커(②)를 쓰려면 `style_anchor`도 넣는다. (git에는 올라가지 않음)
-4. `backend/app/prompts/image_model.md`의 `{렌즈 수}` 같은 제품별 자리를 채우고 `IMAGE_PROVIDER=vertex`
+3. 이미지까지 쓰려면 `backend/assets/product/`에 공식 제품 사진을 넣는다 (.png/.jpg/.webp, git에는 올라가지 않음).
+   - 필수: `closed_front`, `closed_back`, `unfolded` (제품 상태별 주 참조)
+   - 선택: `closed_views` (접힌 상태 측면·후면·정면 한 장), `color_lineup` (컬러 라인업. 제품 사진과 다른 컬러일 때 첨부), `style_anchor` (P2의 ②)
+4. `IMAGE_PROVIDER=vertex`. 렌즈 수·배열은 `backend/app/prompts/image_model.md`에 제품 사진 기준으로 적혀 있다.
 
 ## 프롬프트 수정
 

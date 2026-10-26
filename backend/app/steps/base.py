@@ -13,7 +13,8 @@ from app.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
 
-GENERATE_ATTEMPTS = 2
+GENERATE_ATTEMPTS = 3
+RETRY_BACKOFF = 5  # 초. 두 번째 시도는 5초, 세 번째는 10초 뒤
 
 
 class Step(ABC):
@@ -50,9 +51,14 @@ class Step(ABC):
         context = self.build_context(run, slot)
         angles = [self.angles[i % len(self.angles)] for i in range(settings.num_options)]
         results = await asyncio.gather(
-            *(self._generate_with_retry(run, slot, context, angle, i) for i, angle in enumerate(angles))
+            *(self._generate_with_retry(run, slot, context, angle, i) for i, angle in enumerate(angles)),
+            return_exceptions=True,
         )
-        return SlotState(options=[self.make_option(run, slot, a, r) for a, r in zip(angles, results)])
+        # 일부 안만 실패하면 성공한 안으로 보여준다. 모두 실패했을 때만 단계 실패.
+        succeeded = [(a, r) for a, r in zip(angles, results) if not isinstance(r, BaseException)]
+        if not succeeded:
+            raise next(r for r in results if isinstance(r, BaseException))
+        return SlotState(options=[self.make_option(run, slot, a, r) for a, r in succeeded])
 
     async def _generate_with_retry(
         self, run: RunState, slot: str, context: dict[str, str], angle: str, index: int
@@ -65,6 +71,7 @@ class Step(ABC):
                 if attempt == GENERATE_ATTEMPTS:
                     raise
                 logger.warning("%s/%s 안 %d 생성 실패, 다시 시도합니다", self.name, slot, index + 1, exc_info=True)
+                await asyncio.sleep(RETRY_BACKOFF * attempt)  # 할당량 초과(429)는 잠깐 기다려야 풀린다
         raise AssertionError("unreachable")
 
     async def generate(self, run: RunState, slots: list[str]) -> dict[str, SlotState]:

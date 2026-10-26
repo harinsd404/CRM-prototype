@@ -19,12 +19,15 @@ from app.core.store import run_dir
 from app.providers.image import get_image_provider
 from app.steps.base import Step, invoke_structured
 
-# 제품 상태별 공식 제품 사진 파일 이름 (assets/product/{이름}.png|jpg|webp). P2의 첨부 ①
+# 제품 상태별 공식 제품 사진 (assets/product/{이름}.png|jpg|webp). P2의 첨부 ①. 앞의 것이 주 참조
 _PRODUCT_REFERENCES = {
-    "fully closed front": "closed_front",
-    "fully closed back": "closed_back",
-    "fully unfolded": "unfolded",
+    "fully closed front": ["closed_front", "closed_views"],
+    "fully closed back": ["closed_back", "closed_views"],
+    "fully unfolded": ["unfolded"],
 }
+# 제품 사진이 모두 이 컬러라서, 다른 컬러일 때만 컬러 라인업 사진을 함께 보낸다
+_REFERENCE_COLOR = "라벤더"
+_COLOR_LINEUP = "color_lineup"
 _STYLE_ANCHOR = "style_anchor"  # P2의 첨부 ② (선택)
 _REFERENCE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 
@@ -84,13 +87,16 @@ def _find_reference(stem: str) -> Path | None:
 
 
 def reference_images(brief: ImageBrief) -> list[Path]:
-    """제품 상태에 맞는 공식 제품 사진(①)과, 있으면 스타일 앵커(②)를 P2의 첨부 순서대로.
-    ①이 없으면 빈 목록이다 (스타일 앵커만 보내면 제품을 지어내므로)."""
-    product = _find_reference(_PRODUCT_REFERENCES[brief.state])
-    if product is None:
+    """제품 상태에 맞는 공식 제품 사진(①)과, 있으면 컬러 라인업·스타일 앵커(②)를 P2의 첨부 순서대로.
+    주 참조 사진이 없으면 빈 목록이다 (나머지만 보내면 제품을 지어내므로)."""
+    main, *extra = _PRODUCT_REFERENCES[brief.state]
+    if (product := _find_reference(main)) is None:
         return []
-    anchor = _find_reference(_STYLE_ANCHOR)
-    return [product, anchor] if anchor else [product]
+    stems = [*extra]
+    if _REFERENCE_COLOR not in brief.color:
+        stems.append(_COLOR_LINEUP)
+    stems.append(_STYLE_ANCHOR)
+    return [product, *filter(None, map(_find_reference, stems))]
 
 
 def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) -> str:
