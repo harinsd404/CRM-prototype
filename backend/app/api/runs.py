@@ -1,9 +1,13 @@
+import io
 import json
 import logging
+import re
+import zipfile
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from app.config import settings
@@ -196,3 +200,32 @@ def preview(run_id: str) -> str:
     if run.html is None:
         raise HTTPException(404, "아직 조립된 시안이 없습니다.")
     return run.html
+
+
+_FONTS_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
+
+
+@router.get("/{run_id}/download")
+def download(run_id: str) -> Response:
+    """최종 시안을 ZIP으로 내려받는다. 서버 없이 열리도록 이미지·폰트 주소를 ZIP 안의 상대 경로로 바꾼다."""
+    run = _get_run(run_id)
+    if run.html is None:
+        raise HTTPException(404, "아직 조립된 시안이 없습니다.")
+    folder = store.run_dir(run.id)
+    html = run.html.replace(f"/api/files/{run.id}/images/", "images/").replace("/api/assets/fonts/", "fonts/")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("index.html", html)
+        for name in sorted(set(re.findall(r'src="images/([^"]+)"', html))):
+            zf.write(folder / "images" / name, f"images/{name}")
+        for name in sorted(set(re.findall(r"url\('fonts/([^']+)'\)", html))):
+            if (_FONTS_DIR / name).exists():  # 폰트는 git에 없어서 없는 환경도 있다
+                zf.write(_FONTS_DIR / name, f"fonts/{name}")
+        if (folder / "html_input.json").exists():
+            zf.write(folder / "html_input.json", "html_input.json")
+    return Response(
+        buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="crm-{run.id}.zip"'},
+    )

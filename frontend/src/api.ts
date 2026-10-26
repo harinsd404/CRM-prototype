@@ -41,5 +41,8 @@ export const api = {
 
   render: (runId: string) => request<RunState>(`/runs/${runId}/render`, { method: "POST" }),
 
+  // 최종 시안 ZIP (index.html + images/ + fonts/ + html_input.json)
+  downloadUrl: (run: RunState) => `/api/runs/${run.id}/download?v=${encodeURIComponent(run.updated_at)}`,
+
   previewUrl: (run: RunState) => `/api/runs/${run.id}/preview?v=${encodeURIComponent(run.updated_at)}`,
 };

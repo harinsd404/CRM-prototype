@@ -4,13 +4,14 @@ import { DEFAULT_COLORS, DEFAULT_PRODUCT_NAME, DEFAULT_SPECS } from "../defaults
 import { POD_NAMES, type Mood, type PodName, type RunInput, type RunState } from "../types";
 
 interface Props {
+  initial: RunInput | null; // 다시 시작하기: 직전 실행의 입력을 채워 둔다
   onCreated: (run: RunState) => void;
 }
 
 const fieldClass = "mt-1 w-full rounded-lg border bg-white p-2.5 text-sm";
 
-export default function InputForm({ onCreated }: Props) {
-  const [input, setInput] = useState<RunInput>({
+export default function InputForm({ initial, onCreated }: Props) {
+  const [input, setInput] = useState<RunInput>(initial ?? {
     target_id: "P1",
     persona: "",
     mood: "HOT",

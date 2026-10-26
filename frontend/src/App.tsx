@@ -5,7 +5,7 @@ import HtmlPreview from "./components/HtmlPreview";
 import InputForm from "./components/InputForm";
 import StepPanel from "./components/StepPanel";
 import Stepper from "./components/Stepper";
-import { STEP_ORDER, isStepComplete, type RunState } from "./types";
+import { STEP_ORDER, isStepComplete, type RunInput, type RunState } from "./types";
 
 // 새로고침해도 이어서 작업할 수 있게 run id를 URL(?run=)에 둔다.
 function readRunId() {
@@ -22,6 +22,7 @@ function writeRunId(runId: string | null) {
 export default function App() {
   const [run, setRun] = useState<RunState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastInput, setLastInput] = useState<RunInput | null>(null);
 
   useEffect(() => {
     const runId = readRunId();
@@ -41,8 +42,12 @@ export default function App() {
     setRun(newRun);
   };
 
+  // 진행 상황은 서버에 남아 있어서 ?run= 주소로 언제든 돌아올 수 있다
   const reset = () => {
+    if (run && !window.confirm("입력 화면으로 돌아갑니다. 지금 입력값은 그대로 채워 둡니다. 계속할까요?")) return;
+    setLastInput(run?.input ?? null);
     writeRunId(null);
+    window.scrollTo({ top: 0 });
     setRun(null);
     setLoadError(null);
   };
@@ -65,7 +70,7 @@ export default function App() {
         {loadError && <ErrorMessage message={loadError} onClose={() => setLoadError(null)} />}
 
         {!run ? (
-          <InputForm onCreated={startRun} />
+          <InputForm initial={lastInput} onCreated={startRun} />
         ) : (
           <>
             <section className="rounded-xl border bg-white p-5 text-sm">
@@ -86,6 +91,38 @@ export default function App() {
             })}
 
             <HtmlPreview run={run} onChange={setRun} />
+
+            <footer className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-5">
+              <p className="text-sm text-gray-500">
+                {run.html
+                  ? "완성된 시안을 HTML·이미지·폰트·html_input.json 묶음(ZIP)으로 저장합니다."
+                  : "④에서 시안을 조립하면 저장할 수 있습니다. 진행 상황은 자동으로 저장됩니다."}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={reset}
+                  className="rounded-lg border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  다시 시작하기
+                </button>
+                {run.html ? (
+                  <a
+                    href={api.downloadUrl(run)}
+                    download
+                    className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover active:bg-primary-pressed"
+                  >
+                    저장하기
+                  </a>
+                ) : (
+                  <button
+                    disabled
+                    className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white opacity-40"
+                  >
+                    저장하기
+                  </button>
+                )}
+              </div>
+            </footer>
           </>
         )}
       </main>
