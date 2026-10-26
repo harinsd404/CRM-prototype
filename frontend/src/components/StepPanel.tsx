@@ -6,14 +6,15 @@ import {
   STEP_ORDER,
   isStepComplete,
   type CopyContent,
+  type PodContent,
   type RunState,
   type SlotState,
   type StepContents,
   type StepName,
 } from "../types";
 import CopyEditBox from "./CopyEditBox";
-import EditBox from "./EditBox";
 import OptionCard from "./OptionCard";
+import PodEditBox from "./PodEditBox";
 
 interface Props {
   step: StepName;
@@ -162,9 +163,9 @@ function SlotView({ step, run, slotName, title, slot, busy, onRegenerate, onSele
         />
       )}
       {slot.selected !== null && step === "pod" && (
-        <EditBox
+        <PodEditBox
           key={`${slot.selected}-${run.updated_at}`}
-          content={(slot.edited ?? slot.options[slot.selected]).content}
+          content={(slot.edited ?? slot.options[slot.selected]).content as PodContent}
           disabled={disabled}
           onSave={(edited) => onSelect(slot.selected!, edited)}
         />

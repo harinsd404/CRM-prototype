@@ -17,6 +17,15 @@ export type PodName = "디자인" | "디스플레이" | "성능" | "카메라" |
 export const POD_NAMES: PodName[] = ["디자인", "디스플레이", "성능", "카메라", "Now nudge"];
 
 export type Layout = "L1" | "L2" | "L3" | "L4" | "L5";
+export const LAYOUTS: Layout[] = ["L1", "L2", "L3", "L4", "L5"];
+// backend/app/core/domain.py LAYOUT_DESCRIPTIONS의 짧은 버전
+export const LAYOUT_LABELS: Record<Layout, string> = {
+  L1: "텍스트 위 · 풀폭 이미지",
+  L2: "풀폭 이미지 · 텍스트 아래",
+  L3: "풀블리드 + 텍스트 오버레이",
+  L4: "둥근 이미지 카드",
+  L5: "좌 텍스트 · 우 이미지",
+};
 export type Mood = "HOT" | "WARM" | "COLD";
 
 export interface PodContent {
