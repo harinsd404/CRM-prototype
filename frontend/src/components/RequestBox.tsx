@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatElapsed, useElapsed } from "../hooks";
 import { Spinner } from "./icons";
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 export default function RequestBox({ placeholder, submitLabel, busy, disabled, onSubmit, onCancel }: Props) {
   const [text, setText] = useState("");
   const request = text.trim();
+  const elapsed = useElapsed(busy);
   const submit = () => request && !disabled && onSubmit(request);
 
   return (
@@ -36,7 +38,7 @@ export default function RequestBox({ placeholder, submitLabel, busy, disabled, o
           className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-40"
         >
           {busy && <Spinner />}
-          {busy ? "반영하는 중…" : submitLabel}
+          {busy ? `반영하는 중 · ${formatElapsed(elapsed)}` : submitLabel}
         </button>
         <button type="button" onClick={onCancel} className="rounded-md px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-100">
           취소

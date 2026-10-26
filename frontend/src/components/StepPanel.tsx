@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { formatElapsed, useElapsed, useLeaveWarning } from "../hooks";
 import {
   STEP_LABELS,
   STEP_ORDER,
@@ -13,6 +14,7 @@ import {
   type StepName,
 } from "../types";
 import CopyEditBox from "./CopyEditBox";
+import ErrorMessage from "./ErrorMessage";
 import { CheckIcon, PencilIcon, RefreshIcon, SparkleIcon, Spinner } from "./icons";
 import OptionCard from "./OptionCard";
 import PodEditBox from "./PodEditBox";
@@ -35,7 +37,13 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
   const [busy, setBusy] = useState<BusyKey>(null);
   const [error, setError] = useState<string | null>(null);
   // 이미지 단계는 Pod 하나에 1~3분이 걸려서 Pod별로 차례로 요청한다. 끝난 Pod부터 바로 화면에 나온다.
-  const [progress, setProgress] = useState<{ pod: string; done: number; total: number } | null>(null);
+  const [progress, setProgress] = useState<{
+    pod: string;
+    done: number;
+    total: number;
+  } | null>(null);
+  const elapsed = useElapsed(busy !== null);
+  useLeaveWarning(busy !== null);
 
   const call = async (key: string, action: () => Promise<RunState>): Promise<boolean> => {
     setBusy(key);
@@ -62,12 +70,15 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
   const slotNames = multiSlot ? pods : Object.keys(state.slots);
   const generatedCount = Object.keys(state.slots).length;
 
-  const generateEachPod = async () => {
-    setBusy("all");
+  // 이미지 단계에서 아직 생성하지 않은 Pod. 일부만 만든 상태면 남은 Pod만 이어서 만들 수 있다
+  const missingPods = multiSlot ? pods.filter((pod) => !state.slots[pod]) : [];
+
+  const generateEachPod = async (key: string, targets: string[]) => {
+    setBusy(key);
     setError(null);
     try {
-      for (const [i, pod] of pods.entries()) {
-        setProgress({ pod, done: i, total: pods.length });
+      for (const [i, pod] of targets.entries()) {
+        setProgress({ pod, done: i, total: targets.length });
         onChange(await api.generate(run.id, step, pod));
       }
     } catch (err) {
@@ -80,13 +91,17 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
 
   const generateAll = () => {
     if (!confirmReset()) return;
-    if (multiSlot) generateEachPod();
+    if (multiSlot) generateEachPod("all", pods);
     else call("all", () => api.generate(run.id, step));
   };
-  const busyLabel = progress ? `${progress.pod} 생성 중 (${progress.done + 1}/${progress.total})` : "생성 중…";
+  const generateMissing = () => confirmReset() && generateEachPod("missing", missingPods);
+  const busyLabel = `${progress ? `${progress.pod} 생성 중 (${progress.done + 1}/${progress.total})` : "생성 중"} · ${formatElapsed(elapsed)}`;
 
   return (
-    <section id={`step-${step}`} className={`scroll-mt-24 rounded-xl border bg-white p-6 ${locked ? "opacity-50" : ""}`}>
+    <section
+      id={`step-${step}`}
+      className={`scroll-mt-24 rounded-xl border bg-white p-6 ${locked ? "opacity-50" : ""}`}
+    >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <h2 className="font-semibold text-ink">{STEP_LABELS[step]}</h2>
@@ -97,31 +112,43 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             </span>
           )}
         </div>
-        {generatedCount === 0 ? (
-          // 처음 생성: 눈에 띄는 주요 버튼
-          <button
-            onClick={generateAll}
-            disabled={locked || busy !== null}
-            className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover active:bg-primary-pressed disabled:opacity-40"
-          >
-            {busy === "all" ? <Spinner /> : <SparkleIcon />}
-            {busy === "all" ? busyLabel : "안 생성"}
-          </button>
-        ) : (
-          // 이미 안이 있으면: 덮어쓰는 동작이라 한 단계 낮춘 보조 버튼
-          <button
-            onClick={generateAll}
-            disabled={locked || busy !== null}
-            className="flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40"
-          >
-            {busy === "all" ? <Spinner /> : <RefreshIcon />}
-            {busy === "all" ? busyLabel : multiSlot ? "전체 다시 생성" : "다시 생성"}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {generatedCount > 0 && missingPods.length > 0 && (
+            <button
+              onClick={generateMissing}
+              disabled={locked || busy !== null}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover active:bg-primary-pressed disabled:opacity-40"
+            >
+              {busy === "missing" ? <Spinner /> : <SparkleIcon />}
+              {busy === "missing" ? busyLabel : `남은 Pod 생성 (${missingPods.length}개)`}
+            </button>
+          )}
+          {generatedCount === 0 ? (
+            // 처음 생성: 눈에 띄는 주요 버튼
+            <button
+              onClick={generateAll}
+              disabled={locked || busy !== null}
+              className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover active:bg-primary-pressed disabled:opacity-40"
+            >
+              {busy === "all" ? <Spinner /> : <SparkleIcon />}
+              {busy === "all" ? busyLabel : "안 생성"}
+            </button>
+          ) : (
+            // 이미 안이 있으면: 덮어쓰는 동작이라 한 단계 낮춘 보조 버튼
+            <button
+              onClick={generateAll}
+              disabled={locked || busy !== null}
+              className="flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+            >
+              {busy === "all" ? <Spinner /> : <RefreshIcon />}
+              {busy === "all" ? busyLabel : multiSlot ? "전체 다시 생성" : "다시 생성"}
+            </button>
+          )}
+        </div>
       </div>
 
       <StepGuide step={step} run={run} locked={locked} generatedCount={generatedCount} />
-      {error && <p className="mt-3 rounded-lg bg-danger-soft p-3 text-sm text-danger-strong">{error}</p>}
+      {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
 
       {!locked &&
         slotNames.map((slotName, i) => (
@@ -133,10 +160,9 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             title={multiSlot ? `${i + 1}. ${slotName}` : null}
             slot={state.slots[slotName] ?? null}
             busy={busy}
+            elapsed={elapsed}
             onGenerate={
-              multiSlot
-                ? (feedback) => call(slotName, () => api.generate(run.id, step, slotName, feedback))
-                : null
+              multiSlot ? (feedback) => call(slotName, () => api.generate(run.id, step, slotName, feedback)) : null
             }
             onSelect={(index, edited) =>
               confirmReset() && call(slotName, () => api.select(run.id, step, slotName, index, edited))
@@ -144,7 +170,12 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             onRevise={(index, request, pod) =>
               confirmReset()
                 ? call(multiSlot ? `${slotName}#${index}` : slotName, () =>
-                    api.revise(run.id, step, { slot: slotName, index, request, pod }),
+                    api.revise(run.id, step, {
+                      slot: slotName,
+                      index,
+                      request,
+                      pod,
+                    }),
                   )
                 : Promise.resolve(false)
             }
@@ -161,8 +192,19 @@ const FIRST_GUIDE: Record<StepName, string> = {
 };
 
 /** 지금 이 단계에서 무엇을 하면 되는지 한 줄로 알려준다. */
-function StepGuide({ step, run, locked, generatedCount }: { step: StepName; run: RunState; locked: boolean; generatedCount: number }) {
+function StepGuide({
+  step,
+  run,
+  locked,
+  generatedCount,
+}: {
+  step: StepName;
+  run: RunState;
+  locked: boolean;
+  generatedCount: number;
+}) {
   let text: string;
+  let next: { href: string; label: string } | null = null;
   if (locked) text = "앞 단계에서 안을 먼저 선택하세요.";
   else if (generatedCount === 0) text = FIRST_GUIDE[step];
   else if (!isStepComplete(run, step)) {
@@ -171,12 +213,26 @@ function StepGuide({ step, run, locked, generatedCount }: { step: StepName; run:
       const chosen = pods.filter((pod) => run.steps.image.slots[pod]?.selected != null).length;
       text = `Pod마다 이미지를 한 장씩 클릭해 고르세요. (${chosen}/${pods.length} 선택) 마음에 들지 않으면 이미지 아래 "수정 요청"을 써 보세요.`;
     } else text = "마음에 드는 안을 클릭해 고르세요. 고른 안이 다음 단계의 입력이 됩니다.";
-  } else
+  } else {
+    const nextStep = STEP_ORDER[STEP_ORDER.indexOf(step) + 1];
     text =
       step === "image"
-        ? "모든 Pod를 골랐습니다. 아래 ④에서 시안을 조립하세요."
-        : "다음 단계로 진행하세요. 필요하면 아래에서 직접 고치거나 AI에게 수정을 요청할 수 있습니다.";
-  return <p className="mt-2 text-sm text-gray-500">{text}</p>;
+        ? "모든 Pod를 골랐습니다. ④에서 시안을 조립하세요."
+        : "선택을 마쳤습니다. 필요하면 아래에서 직접 고치거나 AI에게 수정을 요청할 수 있습니다.";
+    next = nextStep
+      ? { href: `#step-${nextStep}`, label: `${STEP_LABELS[nextStep]}로 이동` }
+      : { href: "#step-render", label: "④ 시안 조립으로 이동" };
+  }
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">
+      <p>{text}</p>
+      {next && (
+        <a href={next.href} className="font-semibold text-primary hover:text-primary-pressed">
+          {next.label} ↓
+        </a>
+      )}
+    </div>
+  );
 }
 
 interface SlotViewProps {
@@ -186,12 +242,13 @@ interface SlotViewProps {
   title: string | null;
   slot: SlotState<StepName> | null; // 이미지 단계에서 아직 생성하지 않은 Pod는 null
   busy: BusyKey;
+  elapsed: number;
   onGenerate: ((feedback?: string) => Promise<boolean>) | null; // 이미지 단계: 이 Pod만 (요청 반영해) 다시 생성
   onSelect: (index: number, edited?: StepContents[StepName]) => void;
   onRevise: (index: number, request: string, pod?: string) => Promise<boolean>;
 }
 
-function SlotView({ step, run, slotName, title, slot, busy, onGenerate, onSelect, onRevise }: SlotViewProps) {
+function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate, onSelect, onRevise }: SlotViewProps) {
   const disabled = busy !== null;
   const [requesting, setRequesting] = useState(false); // 이 Pod 요청하며 다시 생성
   const [revising, setRevising] = useState<number | null>(null); // 수정 요청 중인 이미지 번호
@@ -210,7 +267,7 @@ function SlotView({ step, run, slotName, title, slot, busy, onGenerate, onSelect
             <div className="flex items-center gap-1.5">
               {busy === slotName && (
                 <span className="flex items-center gap-1 text-xs text-gray-500">
-                  <Spinner className="h-3.5 w-3.5" /> 생성 중 (1~3분)
+                  <Spinner className="h-3.5 w-3.5" /> 생성 중 · {formatElapsed(elapsed)} (보통 1~3분)
                 </span>
               )}
               {slot ? (
@@ -361,7 +418,9 @@ function CopyReviseBox({
             onClick={() => setPod(p.pod === pod ? null : p.pod)}
             disabled={disabled}
             className={`rounded-full border px-3 py-1 text-xs disabled:opacity-40 ${
-              p.pod === pod ? "border-primary bg-primary-soft font-semibold text-primary-pressed" : "bg-white hover:bg-gray-100"
+              p.pod === pod
+                ? "border-primary bg-primary-soft font-semibold text-primary-pressed"
+                : "bg-white hover:bg-gray-100"
             }`}
           >
             {p.pod}

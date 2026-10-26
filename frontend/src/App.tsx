@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import ErrorMessage from "./components/ErrorMessage";
 import HtmlPreview from "./components/HtmlPreview";
 import InputForm from "./components/InputForm";
 import StepPanel from "./components/StepPanel";
@@ -25,7 +26,14 @@ export default function App() {
   useEffect(() => {
     const runId = readRunId();
     if (!runId) return;
-    api.getRun(runId).then(setRun, (e: Error) => setLoadError(e.message));
+    api.getRun(runId).then(
+      (loaded) => {
+        setRun(loaded);
+        // 단계는 실행을 불러온 뒤에 그려지므로 주소의 #step-… 위치로 그때 이동한다
+        requestAnimationFrame(() => document.querySelector(window.location.hash || "#none")?.scrollIntoView());
+      },
+      (e: Error) => setLoadError(e.message),
+    );
   }, []);
 
   const startRun = (newRun: RunState) => {
@@ -54,7 +62,7 @@ export default function App() {
       </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
-        {loadError && <p className="rounded bg-danger-soft p-3 text-sm text-danger-strong">{loadError}</p>}
+        {loadError && <ErrorMessage message={loadError} onClose={() => setLoadError(null)} />}
 
         {!run ? (
           <InputForm onCreated={startRun} />

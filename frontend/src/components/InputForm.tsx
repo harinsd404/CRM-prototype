@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { api } from "../api";
-import { DEFAULT_SPECS } from "../defaults";
+import { DEFAULT_COLORS, DEFAULT_PRODUCT_NAME, DEFAULT_SPECS } from "../defaults";
 import { POD_NAMES, type Mood, type PodName, type RunInput, type RunState } from "../types";
 
 interface Props {
@@ -15,8 +15,8 @@ export default function InputForm({ onCreated }: Props) {
     persona: "",
     mood: "HOT",
     used_first_pod: null,
-    product_name: "",
-    colors: "",
+    product_name: DEFAULT_PRODUCT_NAME,
+    colors: DEFAULT_COLORS,
     specs: DEFAULT_SPECS,
   });
   const [busy, setBusy] = useState(false);
@@ -71,12 +71,15 @@ export default function InputForm({ onCreated }: Props) {
       </div>
 
       <label className="block">
-        <span className="text-sm font-medium">타겟 페르소나 (관심사 / 소구 강도)</span>
+        <span className="text-sm font-medium">
+          타겟 페르소나 (관심사 / 소구 강도) <span className="text-danger">*</span>
+        </span>
         <textarea
           value={input.persona}
           onChange={(e) => set("persona", e.target.value)}
           rows={2}
           required
+          placeholder="예: 콘텐츠 소비형 — 이동 중 영상·웹툰을 큰 화면으로 즐기는 20대"
           className={fieldClass}
         />
       </label>
@@ -112,12 +115,15 @@ export default function InputForm({ onCreated }: Props) {
       </fieldset>
 
       {error && <p className="text-sm text-danger">{error}</p>}
-      <button
-        disabled={busy}
-        className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
-      >
-        {busy ? "만드는 중…" : "시작하기"}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          disabled={busy}
+          className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+        >
+          {busy ? "만드는 중…" : "시작하기"}
+        </button>
+        <p className="text-xs text-gray-500">시작하면 ① Pod 순서 → ② 카피 → ③ 이미지 → ④ 시안 조립 순서로 진행합니다.</p>
+      </div>
     </form>
   );
 }

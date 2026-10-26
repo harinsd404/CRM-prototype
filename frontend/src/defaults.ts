@@ -20,3 +20,7 @@ export const DEFAULT_SPECS: Record<PodName, string> = {
     "Galaxy AI 기능. 흐름을 끊지 않고 먼저 제안. 커버 디스플레이에서 메인 디스플레이까지 자연스럽게 연결, " +
     "알림을 누르면 분할 화면으로 전환, 앱 전환 없이 사진 공유·장소 저장 수행",
 };
+
+// 기본 스펙과 같은 제품. 공식 사진(backend/assets/product/color_lineup.png)의 색 순서를 따른다.
+export const DEFAULT_PRODUCT_NAME = "Galaxy Z Fold";
+export const DEFAULT_COLORS = "라벤더, 그라파이트, 크림, 피스타치오";
