@@ -1,7 +1,9 @@
 import { useState, type KeyboardEvent } from "react";
 import type { CopyContent, ImageContent, Option, PodContent, StepName } from "../types";
+import { LAYOUT_LABELS } from "../types";
 import { CheckIcon } from "./icons";
 import ImageLightbox from "./ImageLightbox";
+import LayoutIcon from "./LayoutIcon";
 
 interface Props {
   index: number;
@@ -31,14 +33,21 @@ export default function OptionCard({ index, step, option, selected, edited, disa
       aria-disabled={disabled}
       onClick={choose}
       onKeyDown={onKeyDown}
-      className={`group flex cursor-pointer flex-col rounded-xl border-2 p-4 text-left text-sm transition ${
+      className={`group flex cursor-pointer flex-col rounded-xl border-2 bg-white p-4 text-left text-sm transition ${
         disabled ? "cursor-wait" : ""
       } ${selected ? "border-primary ring-2 ring-primary-soft" : "border-gray-200 hover:border-gray-400"}`}
     >
-      <span className="flex items-start justify-between gap-2">
-        <span className="text-xs text-gray-400">
-          {index + 1}번 · {option.angle}
-          {edited && <span className="ml-1 text-primary">· 수정됨</span>}
+      {/* 머리: 안 번호 + 이 안의 방향 */}
+      <span className="flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5">
+          <span
+            className={`rounded-md px-2 py-0.5 text-xs font-bold ${
+              selected ? "bg-primary-soft text-primary-pressed" : "bg-gray-100 text-gray-600"
+            }`}
+          >
+            {index + 1}안
+          </span>
+          {edited && <span className="text-xs font-semibold text-primary">수정됨</span>}
         </span>
         {selected ? (
           <span className="flex shrink-0 items-center gap-0.5 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-white">
@@ -51,6 +60,7 @@ export default function OptionCard({ index, step, option, selected, edited, disa
           </span>
         )}
       </span>
+      <p className="mt-2 leading-snug font-semibold text-ink">{option.angle}</p>
 
       {/* 원본 프롬프트 규칙을 코드로 검사한 결과. 사람이 고를 때 참고한다 */}
       {option.warnings.length > 0 && (
@@ -70,24 +80,43 @@ export default function OptionCard({ index, step, option, selected, edited, disa
   );
 }
 
+// 카드 아래쪽에 접어 두는 "이 안의 의도" 설명. 펼쳐도 카드가 선택되지 않게 클릭을 막는다
+function Rationale({ label, text }: { label: string; text: string }) {
+  return (
+    <details onClick={(e) => e.stopPropagation()} className="border-t pt-2 text-xs">
+      <summary className="cursor-pointer text-gray-400 hover:text-gray-700">{label}</summary>
+      <p className="mt-1 leading-relaxed text-gray-600">{text}</p>
+    </details>
+  );
+}
+
 function PodBody({ content }: { content: PodContent }) {
   return (
     <>
-      <p className="text-gray-600">{content.target_summary}</p>
+      <p className="rounded-lg bg-gray-50 p-2.5 text-xs leading-relaxed text-gray-600">
+        <span className="mr-1 font-semibold text-gray-700">타겟</span>
+        {content.target_summary}
+      </p>
       <ol className="space-y-1.5">
         {content.items.map((item, i) => (
-          <li key={i}>
+          <li key={i} className="rounded-lg border border-gray-200 p-2.5">
             <div className="flex items-center gap-2">
-              <span className="font-semibold">
-                {i + 1}. {item.pod}
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-ink text-[11px] font-bold text-white">
+                {i + 1}
               </span>
-              <span className="rounded bg-gray-100 px-1.5 font-mono text-xs">{item.layout}</span>
+              <span className="flex-1 font-semibold text-ink">{item.pod}</span>
+              <span className="flex items-center gap-1.5" title={LAYOUT_LABELS[item.layout]}>
+                <LayoutIcon layout={item.layout} />
+                <span className="font-mono text-xs text-gray-500">{item.layout}</span>
+              </span>
             </div>
-            <p className="text-xs text-gray-500">{item.reason}</p>
+            <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500" title={item.reason}>
+              {item.reason}
+            </p>
           </li>
         ))}
       </ol>
-      <p className="border-t pt-2 text-xs text-gray-500">{content.rationale}</p>
+      <Rationale label="이 순서로 구성한 이유" text={content.rationale} />
     </>
   );
 }
@@ -95,23 +124,27 @@ function PodBody({ content }: { content: PodContent }) {
 function CopyBody({ content }: { content: CopyContent }) {
   return (
     <>
-      <ol className="space-y-3">
+      <ol className="space-y-1.5">
         {content.pods.map((p, i) => (
-          <li key={i}>
+          <li key={i} className="rounded-lg border border-gray-200 p-3">
             <p className="text-xs font-semibold text-primary">{p.eyebrow}</p>
-            <p className="font-semibold">
-              {p.headline}{" "}
-              <span className="font-normal text-gray-400">
-                ({p.headline.length}자 · {p.headline_type})
+            <p className="mt-1 text-[15px] leading-snug font-bold text-ink">{p.headline}</p>
+            <p className="mt-1.5 leading-relaxed text-gray-700">{p.body}</p>
+            {/* 규칙 검사에 쓰는 값: 글자 수(기준은 backend/app/steps/copy.py), 헤드카피 유형, 어미 배열 */}
+            <p className="mt-2 flex flex-wrap gap-1 text-[11px] text-gray-500">
+              <span className={`rounded px-1.5 py-0.5 ${p.headline.length > 20 ? "bg-danger-soft text-danger" : "bg-gray-100"}`}>
+                헤드 {p.headline.length}/20자
               </span>
-            </p>
-            <p className="text-gray-700">
-              {p.body} <span className="text-xs text-gray-400">({p.body.length}자 · {p.ending_order})</span>
+              <span className={`rounded px-1.5 py-0.5 ${p.body.length > 110 ? "bg-danger-soft text-danger" : "bg-gray-100"}`}>
+                바디 {p.body.length}/110자
+              </span>
+              <span className="rounded bg-gray-100 px-1.5 py-0.5">유형 {p.headline_type}</span>
+              <span className="rounded bg-gray-100 px-1.5 py-0.5">어미 {p.ending_order}</span>
             </p>
           </li>
         ))}
       </ol>
-      <p className="border-t pt-2 text-xs text-gray-500">{content.rationale}</p>
+      <Rationale label="카피 기획 의도" text={content.rationale} />
     </>
   );
 }
