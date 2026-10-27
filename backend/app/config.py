@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     google_cloud_location: str = "global"
     vertex_text_model: str = "gemini-3.5-flash"
     vertex_thinking_level: str = "low"  # low면 응답이 약 4배 빠르다 (측정: 12초 → 3초)
-    vertex_image_model: str = "gemini-2.5-flash-image"
+    vertex_image_model: str = "gemini-3.1-flash-image"
     image_concurrency: int = 1  # 동시에 보내는 이미지 요청 수. 2 이상이면 429가 잦았다 (실측)
     image_timeout: float = 120
 

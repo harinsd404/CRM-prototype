@@ -45,7 +45,7 @@
 | 백엔드 | FastAPI + uv | 단계별 API(`generate`/`select`)로 흐름이 코드에 드러남. `/docs`로 프론트 없이 검증 |
 | LLM 연결 | LangChain (`langchain-google-genai`, `langchain-openai`) | 단계 코드는 모델을 몰라도 된다. `with_structured_output(method="json_schema")`로 안을 스키마대로 받고, 모델 교체는 `.env`의 `LLM_PROVIDER`만 바꾼다 |
 | 텍스트 모델 | **Vertex AI Gemini** (`gemini-3.5-flash`) | 회사 보안 정책상 외부 LLM API는 불가하지만, 회사 GCP 프로젝트 안의 Vertex AI는 사용 승인됨(ADC 인증, API 키 없음). 처음엔 오픈 모델(Qwen3-8B) 자체 서빙을 계획했으나 회사 GCP 런타임에 GPU가 없어 바꿨다. 오픈 모델 경로(`LLM_PROVIDER=openai`, Ollama/vLLM)는 코드에 남겨 둠 |
-| 이미지 모델 | **Vertex AI Gemini 이미지** (`gemini-2.5-flash-image`, 설정으로 변경) | 회사 GCP 프로젝트 안에서 사용 승인됨. P2가 전제한 대로 공식 제품 사진(①)과 스타일 앵커(②)를 참조 이미지로 함께 보낼 수 있다. 회사 GCP에 GPU가 없어 자체 서빙 이미지 모델은 불가 |
+| 이미지 모델 | **Vertex AI Gemini 이미지** (`gemini-3.1-flash-image`, 설정으로 변경) | 회사 GCP 프로젝트 안에서 사용 승인됨. P2가 전제한 대로 공식 제품 사진(①)과 스타일 앵커(②)를 참조 이미지로 함께 보낼 수 있다. 회사 GCP에 GPU가 없어 자체 서빙 이미지 모델은 불가 |
 | HTML 조립 | Jinja2 템플릿 | 경량 모델의 HTML 생성은 레이아웃이 자주 깨짐. "생성은 AI, 조립은 결정적 로직" |
 | 저장 | JSON 파일 + 로컬 이미지 폴더 | 배포 없음. 실행 하나 = 폴더 하나라 단계별 기록을 그대로 보여줄 수 있음 |
 
@@ -124,6 +124,7 @@ docs/plan.md
 
 - **회사 GCP는 Colab Enterprise(e2-standard-4, GPU 없음).** 그래서 자체 서빙 대신 Vertex AI Gemini를 텍스트·이미지 모두에 쓴다. 백엔드가 로컬에서 Vertex를 직접 호출하므로 Colab 런타임은 켜지 않는다. `infra/llm`(vLLM)은 참고용으로만 남김.
 - 프로젝트에서 호출 가능한 모델은 확인 결과 텍스트 `gemini-3.5-flash`, `gemini-3-flash-preview`, `gemini-3.1-pro-preview`, 이미지 `gemini-2.5-flash-image` (2026-10-25).
+  이미지는 실제 생성으로 다시 확인한 결과 `gemini-3.1-flash-image`, `gemini-3-pro-image`도 호출된다(이름에 `-preview`가 없는 정식 이름. 토큰 세기 호출로는 확인되지 않음). 비교 후 `gemini-3.1-flash-image`로 변경 (2026-10-27).
 - **이미지 비용·할당량.** 전체 생성 1회에 Pod 5개 × N안(기본 15장). 동시 요청은 `IMAGE_CONCURRENCY`(기본 3)로 제한한다. 단가와 프로젝트 할당량은 GCP 콘솔에서 확인.
 - ③은 Pod별로 따로 생성하므로 P1의 "5개 Pod 전체에서 손·인물·배경 연출 2종 이상" 규칙은 자동으로 보장되지 않는다. 안마다 연출 방향(제품 단독 / 손·인물 / 배경)을 다르게 줘서 사람이 고를 때 섞을 수 있게 했다.
 - P1의 일부 규칙(바디 첫 문장 구조, 타겟 유형별 금지 어휘, 명사형 목적어)은 코드로 검사하지 않는다. 모델과 사람의 검수에 맡긴다.
