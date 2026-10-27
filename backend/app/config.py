@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     vertex_text_model: str = "gemini-3.5-flash"
     vertex_thinking_level: str = "low"  # low면 응답이 약 4배 빠르다 (측정: 12초 → 3초)
     vertex_image_model: str = "gemini-3.1-flash-image"
+    # 위 모델이 계속 429(쿼터 소진)면 이 모델로 대신 보낸다. 비우면 대체하지 않는다
+    vertex_image_fallback_model: str = "gemini-2.5-flash-image"
+    image_fallback_minutes: float = 10  # 대체로 넘어간 뒤 이 시간 동안은 위 모델을 건너뛴다
     image_concurrency: int = 1  # 동시에 보내는 이미지 요청 수. 2 이상이면 429가 잦았다 (실측)
     image_timeout: float = 120
 

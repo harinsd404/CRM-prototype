@@ -3,6 +3,7 @@ import logging
 import mimetypes
 import random
 import shutil
+import time
 from functools import lru_cache
 from html import escape
 from pathlib import Path
@@ -23,6 +24,7 @@ IMAGE_SIZES: dict[str, tuple[int, int]] = {"1:1": (1024, 1024), "4:3": (1024, 76
 logger = logging.getLogger(__name__)
 
 _RATE_LIMIT_WAITS = (5, 15)  # 초
+_primary_blocked_until = 0.0  # 기본 이미지 모델이 계속 429일 때, 이 시각(monotonic)까지는 대체 모델만 쓴다
 _POOL_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
 _PALETTES = [("#f6d365", "#fda085"), ("#a1c4fd", "#c2e9fb"), ("#d4fc79", "#96e6a1"), ("#fbc2eb", "#a6c1ee")]
 
@@ -157,13 +159,38 @@ class VertexGeminiProvider:
     async def _call_with_backoff(
         self, parts: list[types.Part | str], ratio: str, seed: int
     ) -> types.GenerateContentResponse:
+        """기본 모델로 보내고, 기다렸다 다시 보내도 429가 계속되면(쿼터 소진, 실측) 대체 모델로 넘어간다.
+        넘어간 뒤 image_fallback_minutes 동안은 기본 모델을 건너뛰어 매번 20초씩 기다리지 않게 한다."""
+        global _primary_blocked_until
+        fallback = settings.vertex_image_fallback_model
+        if fallback and fallback != settings.vertex_image_model:
+            if time.monotonic() < _primary_blocked_until:
+                return await self._call_model(fallback, parts, ratio, seed)
+            try:
+                return await self._call_model(settings.vertex_image_model, parts, ratio, seed)
+            except genai_errors.ClientError as e:
+                if e.code != 429:
+                    raise
+                _primary_blocked_until = time.monotonic() + settings.image_fallback_minutes * 60
+                logger.warning(
+                    "%s 429가 계속되어 %s로 대체합니다 (%g분간)",
+                    settings.vertex_image_model,
+                    fallback,
+                    settings.image_fallback_minutes,
+                )
+                return await self._call_model(fallback, parts, ratio, seed)
+        return await self._call_model(settings.vertex_image_model, parts, ratio, seed)
+
+    async def _call_model(
+        self, model: str, parts: list[types.Part | str], ratio: str, seed: int
+    ) -> types.GenerateContentResponse:
         """Vertex 이미지 모델은 공유 용량이 바쁠 때 429를 간헐적으로 돌려준다 (실측). 잠깐 기다렸다 다시 보낸다."""
         for wait in (*_RATE_LIMIT_WAITS, None):
             try:
                 async with _vertex_slots():
                     response = await asyncio.wait_for(
                         _vertex_client().aio.models.generate_content(
-                            model=settings.vertex_image_model,
+                            model=model,
                             contents=parts,
                             config=types.GenerateContentConfig(
                                 response_modalities=["TEXT", "IMAGE"],
@@ -178,7 +205,7 @@ class VertexGeminiProvider:
             except genai_errors.ClientError as e:
                 if e.code != 429 or wait is None:
                     raise
-                logger.warning("Vertex 이미지 429, %d초 뒤 다시 시도합니다", wait)
+                logger.warning("Vertex 이미지 429 (%s), %d초 뒤 다시 시도합니다", model, wait)
                 await asyncio.sleep(wait)
         raise AssertionError("unreachable")
 
@@ -216,3 +243,10 @@ def get_image_provider() -> ImageProvider:
         "vertex": VertexGeminiProvider,
     }
     return providers[settings.image_provider]()
+
+
+def active_image_model() -> str:
+    """지금 실제로 쓰는 이미지 모델 (대체 중이면 대체 모델). /api/health에서 보여준다."""
+    if settings.vertex_image_fallback_model and time.monotonic() < _primary_blocked_until:
+        return f"{settings.vertex_image_fallback_model} (대체 중: {settings.vertex_image_model} 429)"
+    return settings.vertex_image_model
