@@ -1,4 +1,4 @@
-import type { RunInput, RunState, StepContents, StepName } from "./types";
+import type { ProductImage, RunInput, RunState, StepContents, StepName } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -20,6 +20,17 @@ export const api = {
     request<RunState>("/runs", { method: "POST", body: JSON.stringify(input) }),
 
   getRun: (runId: string) => request<RunState>(`/runs/${runId}`),
+
+  // 입력 화면의 공식 제품 사진 5자리와 기본 사진
+  getProductImages: () => request<ProductImage[]>("/product-images"),
+
+  // 사진 파일을 body 그대로 보낸다. 받은 name을 RunInput.product_images에 넣는다
+  upload: (file: File) =>
+    request<{ name: string; url: string }>("/uploads", {
+      method: "POST",
+      headers: { "Content-Type": file.type },
+      body: file,
+    }),
 
   // slot을 주면 그 슬롯(이미지 단계의 Pod 하나)만 다시 생성한다. feedback은 모든 안에 반영할 사람의 수정 요청
   generate: (runId: string, step: StepName, slot?: string, feedback?: string) =>

@@ -6,6 +6,15 @@ PodName = Literal["디자인", "디스플레이", "성능", "카메라", "Now nu
 Layout = Literal["L1", "L2", "L3", "L4", "L5"]
 Mood = Literal["HOT", "WARM", "COLD"]
 Ratio = Literal["1:1", "4:3", "16:9"]
+# 공식 제품 사진(P2의 첨부 ①) 자리. 파일 이름(assets/product/{자리}.png)과 같다
+ProductImageRole = Literal["closed_front", "closed_back", "closed_views", "unfolded", "color_lineup"]
+PRODUCT_IMAGE_LABELS: dict[str, str] = {
+    "closed_front": "접은 앞면",
+    "closed_back": "접은 뒷면",
+    "closed_views": "접은 상태 측면·뒷면·앞면",
+    "unfolded": "펼친 상태",
+    "color_lineup": "컬러 라인업",
+}
 
 # 삼성닷컴 기본 순서
 POD_NAMES: tuple[PodName, ...] = ("디자인", "디스플레이", "성능", "카메라", "Now nudge")

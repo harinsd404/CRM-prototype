@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.core.domain import POD_NAMES, Mood, PodName
+from app.core.domain import POD_NAMES, Mood, PodName, ProductImageRole
 
 # 단계 순서. 각 단계는 바로 앞 단계에서 선택된 안을 입력으로 받는다.
 STEP_ORDER = ("pod", "copy", "image")
@@ -20,6 +20,10 @@ class RunInput(BaseModel):
     product_name: str = Field(min_length=1, description="영문 공식 제품명")
     colors: str = Field(min_length=1, description="컬러 라인업 (쉼표로 구분)")
     specs: dict[PodName, str] = Field(description="Pod별 스펙(Fact)")
+    # 공식 제품 사진을 바꾸거나 지운 자리만 적는다. 없는 자리 = 기본 사진, null = 지움, 문자열 = 올린 파일 이름
+    product_images: dict[ProductImageRole, str | None] = Field(
+        default={}, description="공식 제품 사진 자리별 선택 (없으면 기본 사진)"
+    )
 
     @model_validator(mode="after")
     def _require_specs(self) -> "RunInput":

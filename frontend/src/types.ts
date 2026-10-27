@@ -100,6 +100,15 @@ export interface RunInput {
   product_name: string;
   colors: string;
   specs: Record<PodName, string>;
+  // 공식 제품 사진을 바꾸거나 지운 자리만 적는다. 없는 자리 = 기본 사진, null = 지움, 문자열 = 올린 파일 이름
+  product_images?: Partial<Record<string, string | null>>;
+}
+
+// GET /api/product-images (backend/app/api/product_images.py)
+export interface ProductImage {
+  role: string;
+  label: string;
+  default_url: string | null;
 }
 
 export interface RunState {

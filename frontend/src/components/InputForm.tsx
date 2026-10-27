@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { api } from "../api";
 import { DEFAULT_COLORS, DEFAULT_PRODUCT_NAME, DEFAULT_SPECS } from "../defaults";
 import { POD_NAMES, type Mood, type PodName, type RunInput, type RunState } from "../types";
+import ProductImagesField from "./ProductImagesField";
 
 interface Props {
   initial: RunInput | null; // 다시 시작하기: 직전 실행의 입력을 채워 둔다
@@ -19,6 +20,7 @@ export default function InputForm({ initial, onCreated }: Props) {
     product_name: DEFAULT_PRODUCT_NAME,
     colors: DEFAULT_COLORS,
     specs: DEFAULT_SPECS,
+    product_images: {},
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +116,8 @@ export default function InputForm({ initial, onCreated }: Props) {
           </label>
         ))}
       </fieldset>
+
+      <ProductImagesField value={input.product_images ?? {}} onChange={(value) => set("product_images", value)} />
 
       {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex items-center gap-3">

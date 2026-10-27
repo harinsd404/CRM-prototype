@@ -15,7 +15,7 @@ from app.core.domain import (
 )
 from app.core.prompts import PROMPT_DIR
 from app.core.state import RunState
-from app.core.store import run_dir
+from app.core.store import product_image_dir, run_dir
 from app.providers.image import get_image_provider
 from app.steps.base import Step, invoke_structured
 
@@ -79,24 +79,27 @@ def check_brief(brief: ImageBrief, layout: str, colors: list[str]) -> list[str]:
     return warnings
 
 
-def _find_reference(stem: str) -> Path | None:
+def _find_reference(folder: Path, stem: str) -> Path | None:
     return next(
-        (path for suffix in _REFERENCE_SUFFIXES if (path := settings.product_image_dir / f"{stem}{suffix}").exists()),
+        (path for suffix in _REFERENCE_SUFFIXES if (path := folder / f"{stem}{suffix}").exists()),
         None,
     )
 
 
-def reference_images(brief: ImageBrief) -> list[Path]:
+def reference_images(run: RunState, brief: ImageBrief) -> list[Path]:
     """제품 상태에 맞는 공식 제품 사진(①)과, 있으면 컬러 라인업·스타일 앵커(②)를 P2의 첨부 순서대로.
+    제품 사진은 입력 화면에서 고른 것(실행 폴더), 스타일 앵커는 assets/product의 것을 쓴다.
     주 참조 사진이 없으면 빈 목록이다 (나머지만 보내면 제품을 지어내므로)."""
+    folder = product_image_dir(run.id)
     main, *extra = _PRODUCT_REFERENCES[brief.state]
-    if (product := _find_reference(main)) is None:
+    if (product := _find_reference(folder, main)) is None:
         return []
     stems = [*extra]
     if _REFERENCE_COLOR not in brief.color:
         stems.append(_COLOR_LINEUP)
-    stems.append(_STYLE_ANCHOR)
-    return [product, *filter(None, map(_find_reference, stems))]
+    found = [_find_reference(folder, stem) for stem in stems]
+    found.append(_find_reference(settings.product_image_dir, _STYLE_ANCHOR))
+    return [product, *filter(None, found)]
 
 
 def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) -> str:
@@ -180,7 +183,7 @@ class ImageStep(Step):
         out_dir.mkdir(parents=True, exist_ok=True)
         path = await get_image_provider().generate(
             prompt,
-            reference_images(brief),
+            reference_images(run, brief),
             out_dir,
             ratio=brief.ratio,
             label=f"{slot} · {brief.concept}",
@@ -196,7 +199,7 @@ class ImageStep(Step):
         path = await get_image_provider().edit(
             source,
             request,
-            reference_images(content.brief),
+            reference_images(run, content.brief),
             images,
             ratio=content.brief.ratio,
             seed=random.randint(0, 2**31 - 1),

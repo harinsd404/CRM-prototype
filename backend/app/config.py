@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     generate_limit_per_minute: int = 10  # 생성 요청 수 상한 (연타·반복 호출 대비)
     image_daily_limit: int = 100  # 하루 Vertex 이미지 호출 상한 (재시도 포함)
     data_dir: Path = BACKEND_DIR / "data" / "runs"
+    upload_dir: Path = BACKEND_DIR / "data" / "uploads"  # 입력 화면에서 올린 제품 사진
+    upload_max_mb: float = 10
 
 
 settings = Settings()

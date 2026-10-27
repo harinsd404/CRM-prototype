@@ -214,8 +214,8 @@ def _require_references(references: list[Path]) -> None:
     if not references:
         # 원본 P2: 제품 사진(①)이 없으면 생성하지 않는다
         raise RuntimeError(
-            f"공식 제품 사진이 없습니다. {settings.product_image_dir}에 "
-            "closed_front / closed_back / unfolded 이미지를 넣어 주세요."
+            "이 장면에 필요한 공식 제품 사진(접은 앞면·접은 뒷면·펼친 상태 중 하나)이 없습니다. "
+            f"입력 화면에서 사진을 올리거나 {settings.product_image_dir}에 넣고 다시 시작해 주세요."
         )
 
 

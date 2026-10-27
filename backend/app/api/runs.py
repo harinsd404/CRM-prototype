@@ -55,7 +55,10 @@ def _get_step(step_name: str) -> Step:
 
 @router.post("", response_model=RunState)
 def create_run(run_input: RunInput) -> RunState:
-    return store.create_run(run_input)
+    try:
+        return store.create_run(run_input)
+    except ValueError as e:  # 올린 제품 사진을 찾을 수 없음
+        raise HTTPException(400, str(e)) from e
 
 
 @router.get("/{run_id}", response_model=RunState)
