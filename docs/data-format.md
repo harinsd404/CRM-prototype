@@ -51,6 +51,7 @@
 | `colors` | string | ✔ | 컬러 라인업, 쉼표로 구분. ③에서 제품 색은 이 중 하나여야 한다 |
 | `specs` | `{PodName: string}` | ✔ | Pod별 스펙(Fact). **하나 이상은 내용이 있어야 함** (없으면 422). 카피의 팩트체크 근거는 이 원문과 대조된다 |
 | `product_images` | `{자리: string \| null}` | – (기본 `{}`) | 공식 제품 사진을 바꾸거나 지운 자리만. 자리 = `closed_front` · `closed_back` · `closed_views` · `unfolded` · `color_lineup`. 없는 자리 = `assets/product`의 기본 사진, `null` = 지움, 문자열 = `POST /api/uploads`가 돌려준 파일 이름. 실행을 만들 때 `data/runs/{run_id}/product/`로 복사해 ③에서 쓴다 |
+| `extra_product_images` | string[] | – (기본 `[]`) | 5자리 외에 더 올린 제품 사진(다른 각도·디테일). `POST /api/uploads`의 파일 이름, **최대 5장** (넘으면 422). `product/extra_1.jpg …`로 복사해 ③에서 ① 사진 뒤에 보조 참조로 보낸다 |
 
 ```json
 {

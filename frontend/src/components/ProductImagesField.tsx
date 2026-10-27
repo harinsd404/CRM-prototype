@@ -1,6 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { api } from "../api";
-import type { ProductImage, RunInput } from "../types";
+import { MAX_EXTRA_PRODUCT_IMAGES, type ProductImage, type RunInput } from "../types";
 import { Spinner } from "./icons";
 
 type Choices = NonNullable<RunInput["product_images"]>;
@@ -8,13 +8,19 @@ type Choices = NonNullable<RunInput["product_images"]>;
 interface Props {
   value: Choices;
   onChange: (value: Choices) => void;
+  extras: string[]; // 5자리 외에 더 올린 사진 (올린 파일 이름)
+  onExtrasChange: (value: string[]) => void;
 }
+
+const ACCEPT = "image/png,image/jpeg,image/webp";
+const EXTRA = "extra"; // 추가 사진을 올리는 중일 때 uploading 값
 
 // 이 자리가 비면 그 제품 상태(접은 앞면·뒷면·펼친 상태)의 이미지를 만들 수 없다 (backend steps/image.py)
 const REQUIRED_ROLES = ["closed_front", "closed_back", "unfolded"];
 
-/** ③ 이미지 생성 때 이미지 모델에 함께 보내는 공식 제품 사진 5자리. 자리마다 다른 사진을 올리거나 지울 수 있다. */
-export default function ProductImagesField({ value, onChange }: Props) {
+/** ③ 이미지 생성 때 이미지 모델에 함께 보내는 공식 제품 사진 5자리. 자리마다 다른 사진을 올리거나 지울 수 있고,
+ * 다른 각도·디테일 사진을 MAX_EXTRA_PRODUCT_IMAGES장까지 더 올릴 수 있다. */
+export default function ProductImagesField({ value, onChange, extras, onExtrasChange }: Props) {
   const [slots, setSlots] = useState<ProductImage[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,15 +57,39 @@ export default function ProductImagesField({ value, onChange }: Props) {
     }
   };
 
+  // 여러 장을 한 번에 골라도 남은 칸 수만큼만 올린다
+  const addExtras = async (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []).slice(0, MAX_EXTRA_PRODUCT_IMAGES - extras.length);
+    e.target.value = "";
+    if (files.length === 0) return;
+    setUploading(EXTRA);
+    setError(null);
+    const added: string[] = [];
+    try {
+      for (const file of files) added.push((await api.upload(file)).name);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      onExtrasChange([...extras, ...added]); // 실패하기 전까지 올린 사진은 남긴다
+      setUploading(null);
+    }
+  };
+
   const missing = slots.filter((slot) => REQUIRED_ROLES.includes(slot.role) && !urlOf(slot));
 
   return (
     <fieldset className="space-y-3">
       <legend className="flex w-full items-center justify-between gap-4 text-sm font-medium">
-        <span>공식 제품 사진 — ③ 이미지를 만들 때 제품 모양·색의 기준으로 함께 보냄. 자리마다 사진을 바꾸거나 지울 수 있음</span>
+        <span>
+          공식 제품 사진 — ③ 이미지를 만들 때 제품 모양·색의 기준으로 함께 보냄. 자리마다 사진을 바꾸거나 지울 수 있고,
+          다른 각도·디테일 사진을 {MAX_EXTRA_PRODUCT_IMAGES}장까지 더 올릴 수 있음
+        </span>
         <button
           type="button"
-          onClick={() => onChange({})}
+          onClick={() => {
+            onChange({});
+            onExtrasChange([]);
+          }}
           className="shrink-0 text-sm text-gray-500 underline hover:text-gray-900"
         >
           기본값으로 되돌리기
@@ -90,7 +120,7 @@ export default function ProductImagesField({ value, onChange }: Props) {
                   {url ? "바꾸기" : "올리기"}
                   <input
                     type="file"
-                    accept="image/png,image/jpeg,image/webp"
+                    accept={ACCEPT}
                     onChange={(e) => upload(slot.role, e)}
                     disabled={uploading !== null}
                     className="hidden"
@@ -110,6 +140,39 @@ export default function ProductImagesField({ value, onChange }: Props) {
             </div>
           );
         })}
+
+        {extras.map((name, i) => (
+          <div key={name} className="flex flex-col rounded-lg border p-2">
+            <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-gray-50">
+              <img src={`/api/uploads/${name}`} alt={`추가 사진 ${i + 1}`} className="h-full w-full object-contain" />
+            </div>
+            <p className="mt-2 text-xs font-medium">추가 사진 {i + 1}</p>
+            <div className="mt-1.5 text-xs">
+              <button
+                type="button"
+                onClick={() => onExtrasChange(extras.filter((_, j) => j !== i))}
+                className="text-gray-500 hover:text-danger"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {extras.length < MAX_EXTRA_PRODUCT_IMAGES && (
+          <label
+            className={`flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-xs text-gray-500 ${
+              uploading ? "opacity-40" : "cursor-pointer hover:border-primary hover:text-primary"
+            }`}
+          >
+            {uploading === EXTRA ? <Spinner className="h-5 w-5" /> : <span className="text-2xl leading-none">+</span>}
+            <span>사진 추가</span>
+            <span className="text-gray-400">
+              {extras.length}/{MAX_EXTRA_PRODUCT_IMAGES}
+            </span>
+            <input type="file" accept={ACCEPT} multiple onChange={addExtras} disabled={uploading !== null} className="hidden" />
+          </label>
+        )}
       </div>
 
       {missing.length > 0 && (

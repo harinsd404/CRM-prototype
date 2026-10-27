@@ -21,6 +21,7 @@ export default function InputForm({ initial, onCreated }: Props) {
     colors: DEFAULT_COLORS,
     specs: DEFAULT_SPECS,
     product_images: {},
+    extra_product_images: [],
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +118,12 @@ export default function InputForm({ initial, onCreated }: Props) {
         ))}
       </fieldset>
 
-      <ProductImagesField value={input.product_images ?? {}} onChange={(value) => set("product_images", value)} />
+      <ProductImagesField
+        value={input.product_images ?? {}}
+        onChange={(value) => set("product_images", value)}
+        extras={input.extra_product_images ?? []}
+        onExtrasChange={(value) => set("extra_product_images", value)}
+      />
 
       {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex items-center gap-3">

@@ -15,7 +15,7 @@ from app.core.domain import (
 )
 from app.core.prompts import PROMPT_DIR
 from app.core.state import RunState
-from app.core.store import product_image_dir, run_dir
+from app.core.store import EXTRA_PREFIX, product_image_dir, run_dir
 from app.providers.image import get_image_provider
 from app.steps.base import Step, invoke_structured
 
@@ -87,7 +87,7 @@ def _find_reference(folder: Path, stem: str) -> Path | None:
 
 
 def reference_images(run: RunState, brief: ImageBrief) -> list[Path]:
-    """제품 상태에 맞는 공식 제품 사진(①)과, 있으면 컬러 라인업·스타일 앵커(②)를 P2의 첨부 순서대로.
+    """제품 상태에 맞는 공식 제품 사진(①)과, 있으면 컬러 라인업·추가 제품 사진·스타일 앵커(②)를 P2의 첨부 순서대로.
     제품 사진은 입력 화면에서 고른 것(실행 폴더), 스타일 앵커는 assets/product의 것을 쓴다.
     주 참조 사진이 없으면 빈 목록이다 (나머지만 보내면 제품을 지어내므로)."""
     folder = product_image_dir(run.id)
@@ -98,6 +98,11 @@ def reference_images(run: RunState, brief: ImageBrief) -> list[Path]:
     if _REFERENCE_COLOR not in brief.color:
         stems.append(_COLOR_LINEUP)
     found = [_find_reference(folder, stem) for stem in stems]
+    # 입력 화면에서 더 올린 제품 사진 (extra_1, extra_2 … 순서)
+    found += sorted(
+        (p for p in folder.glob(f"{EXTRA_PREFIX}*") if p.suffix.lower() in _REFERENCE_SUFFIXES),
+        key=lambda p: int(p.stem.removeprefix(EXTRA_PREFIX)),
+    )
     found.append(_find_reference(settings.product_image_dir, _STYLE_ANCHOR))
     return [product, *filter(None, found)]
 

@@ -17,6 +17,8 @@ These product photos are all in Lavender.
 If [제품 컬러] is not 라벤더, a color line-up photo is also attached. Left to right it shows
 라벤더 (Lavender), 그라파이트 (Graphite), 크림 (Cream), 피스타치오 (Pistachio, the open device at the right).
 Take ONLY the body color from it; the design still comes from the product photos.
+Additional official product photos may follow (other angles or details).
+Use them only to get the design details right; the first image still decides the product state and view.
 ② Style anchor (if attached) — keep the same color grading, lighting, and background tone.
 If ① is missing, output only: "Attach the product reference image."
 

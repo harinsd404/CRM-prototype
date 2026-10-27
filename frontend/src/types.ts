@@ -102,7 +102,12 @@ export interface RunInput {
   specs: Record<PodName, string>;
   // 공식 제품 사진을 바꾸거나 지운 자리만 적는다. 없는 자리 = 기본 사진, null = 지움, 문자열 = 올린 파일 이름
   product_images?: Partial<Record<string, string | null>>;
+  // 5자리 외에 더 올린 제품 사진 파일 이름 (최대 MAX_EXTRA_PRODUCT_IMAGES장)
+  extra_product_images?: string[];
 }
+
+// backend/app/core/domain.py MAX_EXTRA_PRODUCT_IMAGES와 맞춘다
+export const MAX_EXTRA_PRODUCT_IMAGES = 5;
 
 // GET /api/product-images (backend/app/api/product_images.py)
 export interface ProductImage {

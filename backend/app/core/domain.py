@@ -15,6 +15,8 @@ PRODUCT_IMAGE_LABELS: dict[str, str] = {
     "unfolded": "펼친 상태",
     "color_lineup": "컬러 라인업",
 }
+# 5자리 외에 더 올릴 수 있는 제품 사진 수. 모두 첨부 ①의 보조 참조로 보낸다
+MAX_EXTRA_PRODUCT_IMAGES = 5
 
 # 삼성닷컴 기본 순서
 POD_NAMES: tuple[PodName, ...] = ("디자인", "디스플레이", "성능", "카메라", "Now nudge")
