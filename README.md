@@ -3,6 +3,12 @@
 POD 순서 → 카피 → 이미지 단계마다 AI가 N개 안을 만들고, 사람이 하나를 골라(수정해) 다음 단계로 넘기는
 사람 검수형 CRM 시안 생성 프로토타입. 설계와 기술 선택 이유는 [docs/plan.md](docs/plan.md).
 
+| 문서 | 내용 |
+|---|---|
+| [docs/flow.md](docs/flow.md) | 흐름도: 각 단계, 사람이 선택하는 지점, 데이터가 이동하는 방향 |
+| [docs/data-format.md](docs/data-format.md) | 데이터 형식 정의서: 입력 / 단계별 출력 / 선택 결과, 예시 데이터 |
+| [docs/setup.md](docs/setup.md) | 실행 설명서: 설치, 실행, 설정, 문제 해결 |
+
 ## 실행
 
 ```bash
