@@ -126,7 +126,8 @@ _EDIT_PROMPT = """Edit the FIRST attached image according to the request below.
 
 - Change only what the request asks for. Keep everything else — composition, framing, lighting, mood — as it is.
 - The phone must stay exactly the device shown in the other attached official product images:
-  same silhouette and proportion, exactly 2 rear lenses plus one LED flash, same body color.
+  same silhouette and proportion, same tight corner radius (about 1/30 of the body height),
+  exactly 2 rear lenses plus one LED flash, same body color.
 - Keep exactly ONE device, with the same side (front screen or back) facing the camera as in the image to edit.
 - Output ONE continuous photograph. No collage, borders, bars, or panels.
 - Render NO text, letters, numbers, logos, or watermarks.

@@ -1,5 +1,6 @@
 import random
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -14,10 +15,10 @@ from app.core.domain import (
     Ratio,
 )
 from app.core.prompts import PROMPT_DIR
-from app.core.state import RunState
+from app.core.state import RunState, SlotState
 from app.core.store import EXTRA_PREFIX, product_image_dir, run_dir
 from app.providers.image import get_image_provider
-from app.steps.base import Step, invoke_structured
+from app.steps.base import OnOption, Step, invoke_structured, option_label, with_feedback
 
 # 제품 상태별 공식 제품 사진 (assets/product/{이름}.png|jpg|webp). P2의 첨부 ①. 앞의 것이 주 참조
 _PRODUCT_REFERENCES = {
@@ -50,7 +51,9 @@ class ImageBrief(BaseModel):
     image_type: Literal["Base", "Hand-held", "인물 포함", "배경 연출"]
     color: str = Field(description="입력 컬러 라인업 중 1개")
     state: Literal["fully closed front", "fully closed back", "fully unfolded"]
-    view: Literal["straight-on front", "straight-on back", "straight-on unfolded"]
+    view: Literal["straight-on front", "straight-on back", "straight-on unfolded"] = Field(
+        default="straight-on front", description="코드가 state로 맞추므로 쓰지 않아도 된다"
+    )
     orientation: Literal["portrait", "landscape"] = Field(
         default="portrait",
         description="접은 기기를 세로로 두면 portrait, 가로로 쥐면 landscape. 펼친 상태는 항상 landscape",
@@ -60,9 +63,15 @@ class ImageBrief(BaseModel):
     screen_content: str = Field(description=f"화면 콘텐츠. 글자 없는 추상적 UI 설명. 뒷면이면 '{SCREEN_HIDDEN}'")
     person_hand: str = Field(description="인물/손 묘사 또는 '없음'")
     face: Literal["hidden", "no person"]
-    composition: str = Field(description="앵글, 제품 점유율 %")
+    composition: str = Field(description="앵글, 촬영 거리, 화면 속 기기 위치, 제품 점유율 %")
     ratio: Ratio
     safe_zone: str = Field(description=f"L3만 장면 안의 조용한 영역으로 지정, 나머지는 '{NO_SAFE_ZONE}'")
+
+
+class ImageBriefs(BaseModel):
+    """한 Pod의 N안 연출안. 한 번에 써야 안끼리 장소·거리·위치가 겹치지 않는다."""
+
+    briefs: list[ImageBrief] = Field(description="안별 연출 방향 순서대로, 요청한 개수만큼")
 
 
 class ImageOption(BaseModel):
@@ -129,80 +138,51 @@ def reference_images(run: RunState, brief: ImageBrief) -> list[Path]:
     return [product, *filter(None, found)]
 
 
-# 제품 상태·방향별로 '카메라에 무엇이 보이는가'를 코드가 고정해서 적는다 (LLM 연출안의 모순을 덮어쓴다)
-_SHOT_SIDES = {
-    "fully closed front": (
-        "The device is CLOSED. Its FRONT faces the camera: we see the cover screen "
-        "with the small punch-hole selfie camera. The back panel and the rear camera island are NOT visible."
-    ),
-    "fully closed back": (
-        "The device is CLOSED. Its BACK faces the camera: we see the matte back panel and the "
-        "two-lens camera island. The screen faces AWAY from the camera and is NOT visible — "
-        "no screen content, no viewfinder, no UI anywhere in the image. "
-        "If a person is holding it to take a photo, the camera is in front of the lens, looking at the back."
-    ),
-    "fully unfolded": (
-        "The device is FULLY UNFOLDED and perfectly flat. Its large inner main screen faces the camera. "
-        "The back panel and the rear camera island are NOT visible. It is one single flat slab, "
-        "not two phones side by side and not a book-like V shape."
-    ),
+# 제품 상태별로 붙이는 image_model.md 섹션 (그 면에 필요한 규칙만 보낸다)
+_STATE_SECTIONS = {
+    "fully closed front": "closed_front",
+    "fully closed back": "closed_back",
+    "fully unfolded": "unfolded",
 }
-_SHOT_SHAPES = {
-    ("closed", "portrait"): (
-        "Upright (portrait). The silhouette is taller than wide with the proportion of a credit card: "
-        "width = 0.63 × height. Noticeably shorter and wider than an ordinary smartphone."
-    ),
-    ("closed", "landscape"): (
-        "Turned sideways (landscape). The silhouette is wider than tall with the proportion of a credit card "
-        "lying on its long side: height = 0.63 × width. Not a long thin bar."
-    ),
-    ("unfolded", "landscape"): (
-        "Wider than tall, close to a 4:3 photo: width = 1.29 × height. "
-        "It looks like a small square-ish tablet, not a wide 16:9 tablet."
-    ),
-}
+_ORIENTATIONS = {"portrait": "upright (portrait)", "landscape": "held sideways (landscape)"}
 
 
-def shot_lock(brief: ImageBrief) -> str:
-    """이 이미지에서 기기가 몇 대이고 어느 면이 보이며 실루엣 비율이 얼마인지 — 모델이 가장 자주 틀리는 세 가지."""
-    folded = "unfolded" if brief.state == "fully unfolded" else "closed"
-    lines = [
-        "- Exactly ONE device in the whole image. No second phone, no reflection or mirror copy of it.",
-        f"- Side facing the camera: {_SHOT_SIDES[brief.state]}",
-        f"- Silhouette: {_SHOT_SHAPES[(folded, brief.orientation)]}",
-        "- Camera faces the device squarely, so its outline is a clean rounded rectangle "
-        "(not a trapezoid). Uniform scale only — never stretch it to fit the canvas.",
-    ]
-    if brief.face == "hidden":
-        lines.append("- No face: frame the person below the chin, or show only hands and arms.")
-    return "\n".join(lines)
+@lru_cache
+def _model_sections() -> dict[str, str]:
+    """image_model.md를 `## @이름` 섹션으로 나눈다. 메모 주석은 모델에 보내지 않는다."""
+    text = re.sub(r"<!--.*?-->\s*", "", (PROMPT_DIR / "image_model.md").read_text(encoding="utf-8"), flags=re.DOTALL)
+    parts = re.split(r"^## @(\S+)\s*$", text, flags=re.MULTILINE)
+    return {name: body.strip() for name, body in zip(parts[1::2], parts[2::2])}
 
 
 def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) -> str:
-    """원본 P2(prompts/image_model.md) 뒤에 이 Pod의 이미지 Input Data를 붙인다."""
-    template = (PROMPT_DIR / "image_model.md").read_text(encoding="utf-8")
-    template = re.sub(r"<!--.*?-->\s*", "", template, flags=re.DOTALL)  # 메모 주석은 모델에 보내지 않는다
-    data = "\n".join(
-        [
-            f"- Pod : {pod}",
-            f"- 타겟 페르소나 : {run.input.persona}",
-            f"- 레이아웃 : {layout} ({LAYOUT_DESCRIPTIONS[layout]})",
-            f"- 이미지 유형 : {brief.image_type}",
-            f"- 제품 컬러 : {brief.color}",
-            f"- 제품 상태 : {brief.state}",
-            f"- 시점 : {brief.view} ({brief.orientation})",
-            f"- 장면 : {brief.scene}",
-            f"- 소품 : {brief.props}",
-            f"- 화면 콘텐츠 : {brief.screen_content}",
-            f"- 인물/손 : {brief.person_hand}",
-            f"- 얼굴 : {brief.face}",
-            f"- 구도 : {brief.composition}",
-            f"- 소구 강도(무드) : {run.input.mood}",
-            f"- 화면비 : {brief.ratio}",
-            f"- Text Safe Zone : {brief.safe_zone}",
-        ]
-    )
-    return f"{template.rstrip()}\n\n{data}\n\n# Shot Lock (overrides any conflicting item above)\n\n{shot_lock(brief)}\n"
+    """이 이미지에 필요한 규칙 섹션만 골라 붙이고, 끝에 이 안의 연출안(Input Data)을 붙인다."""
+    has_person = brief.person_hand not in ("", "없음")
+    shows_screen = brief.state != "fully closed back"
+    names = [
+        "base",
+        _STATE_SECTIONS[brief.state],
+        *(["screen"] if shows_screen else []),
+        *(["person"] if has_person else []),
+        *(["safe_zone"] if layout == "L3" else []),
+        f"mood_{run.input.mood}",
+    ]
+    sections = _model_sections()
+    data = [
+        f"- Pod : {pod}",
+        f"- 타겟 페르소나 : {run.input.persona}",
+        f"- 제품 컬러 : {brief.color}",
+        f"- 제품 상태 : {brief.state}, {_ORIENTATIONS[brief.orientation]}",
+        f"- 장면 : {brief.scene}",
+        f"- 소품 : {brief.props}",
+        *([f"- 화면 콘텐츠 : {brief.screen_content}"] if shows_screen else []),
+        *([f"- 인물/손 : {brief.person_hand}"] if has_person else []),
+        f"- 구도 : {brief.composition}",
+        f"- 화면비 : {brief.ratio}",
+        *([f"- Text Safe Zone : {brief.safe_zone}"] if layout == "L3" else []),
+    ]
+    body = "\n\n".join(sections[name] for name in names)
+    return f"{body}\n\n# Input Data\n" + "\n".join(data) + f"\n\n{sections['check']}\n"
 
 
 class ImageStep(Step):
@@ -244,17 +224,45 @@ class ImageStep(Step):
             "body": copy["body"],
         }
 
+    async def generate_slot(
+        self, run: RunState, slot: str, feedback: str | None = None, on_option: OnOption | None = None
+    ) -> SlotState:
+        """연출안 N개를 LLM 호출 한 번으로 쓰고(안끼리 겹치지 않게), 이미지는 안마다 따로 그려 끝나는 대로 알린다."""
+        layout = self._plan_item(run, slot)["layout"]
+        angles = [self.angles[i % len(self.angles)] for i in range(settings.num_options)]
+        briefs = await self.with_retry(
+            lambda: self._write_briefs(run, slot, layout, angles, feedback), f"{slot} 연출안"
+        )
+        jobs = [
+            (option_label(angle, feedback), lambda brief=brief: self._draw(run, slot, layout, brief))
+            for angle, brief in zip(angles, briefs)
+        ]
+        return await self.collect_options(run, slot, jobs, on_option)
+
+    async def _write_briefs(
+        self, run: RunState, slot: str, layout: str, angles: list[str], feedback: str | None
+    ) -> list[ImageBrief]:
+        if settings.llm_provider == "mock":
+            return [self._mock_brief(run, slot, layout, angle, i) for i, angle in enumerate(angles)]
+        directions = "\n".join(f"{i + 1}안 : {angle}" for i, angle in enumerate(angles))
+        result = await invoke_structured(
+            "image_brief",
+            ImageBriefs,
+            {**self.build_context(run, slot), "angles": with_feedback(directions, feedback), "count": str(len(angles))},
+        )
+        if len(result.briefs) < len(angles):
+            raise ValueError(f"연출안이 {len(angles)}개가 아니라 {len(result.briefs)}개 왔습니다.")
+        return result.briefs[: len(angles)]
+
     async def generate_option(
         self, run: RunState, slot: str, context: dict[str, str], angle: str, index: int
     ) -> ImageOption:
-        layout = self._plan_item(run, slot)["layout"]
-        if settings.llm_provider == "mock":
-            brief = self._mock_brief(run, slot, layout, angle, index)
-        else:
-            brief = await invoke_structured("image_brief", ImageBrief, {**context, "angle": angle})
+        raise NotImplementedError("이미지 단계는 generate_slot에서 연출안을 한 번에 쓴다")
+
+    async def _draw(self, run: RunState, slot: str, layout: str, brief: ImageBrief) -> ImageOption:
+        """연출안 하나로 이미지 한 장을 그린다. 실패해서 다시 시도해도 같은 연출안을 쓴다."""
         normalize_brief(brief, layout)
         prompt = build_image_prompt(run, slot, layout, brief)
-
         out_dir = run_dir(run.id) / "images"
         out_dir.mkdir(parents=True, exist_ok=True)
         path = await get_image_provider().generate(
@@ -295,19 +303,20 @@ class ImageStep(Step):
     def _mock_brief(self, run: RunState, pod: str, layout: str, angle: str, index: int) -> ImageBrief:
         colors = run.input.color_list
         image_type = ("Base", "Hand-held", "배경 연출")[index % 3]
+        states = ("fully closed front", "fully closed back", "fully unfolded")
+        state = "fully unfolded" if pod == "디스플레이" else states[index % 3]
         return ImageBrief(
             concept=f"[예시] {angle}",
             image_type=image_type,
             color=colors[index % len(colors)] if colors else "",
-            state="fully unfolded" if pod == "디스플레이" else "fully closed front",
-            view="straight-on unfolded" if pod == "디스플레이" else "straight-on front",
-            orientation="landscape" if pod == "디스플레이" else "portrait",
-            scene="[예시] 오후의 밝은 카페 창가",
+            state=state,
+            orientation="landscape" if state == "fully unfolded" or index % 3 == 1 else "portrait",
+            scene=("[예시] 오후의 밝은 카페 창가", "[예시] 저녁의 거실 소파", "[예시] 아침의 사무실 책상")[index % 3],
             props="커피잔, 노트",
             screen_content="회색 막대와 컬러 블록으로 된 추상 UI",
             person_hand="한 손이 뒤에서 기기를 받침" if image_type == "Hand-held" else "없음",
             face="hidden" if image_type == "Hand-held" else "no person",
-            composition="정면, 제품 점유율 45%",
+            composition=("정면 클로즈업, 왼쪽, 55%", "정면 미디엄, 가운데, 40%", "위에서 와이드, 오른쪽, 25%")[index % 3],
             ratio=LAYOUT_RATIOS[layout][0],
             safe_zone="하단 40% — 초점이 날아간 테이블 표면" if layout == "L3" else NO_SAFE_ZONE,
         )

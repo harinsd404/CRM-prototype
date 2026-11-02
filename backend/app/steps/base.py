@@ -1,9 +1,9 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
-from typing import Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
 from pydantic import BaseModel
 
@@ -14,11 +14,18 @@ from app.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 # 안 하나가 끝날 때마다 부른다 (슬롯 이름, 만든 안 또는 끝내 실패하면 None)
 OnOption = Callable[[str, Option | None], None]
 
 GENERATE_ATTEMPTS = 3
 RETRY_BACKOFF = 5  # 초. 두 번째 시도는 5초, 세 번째는 10초 뒤
+
+
+def option_label(angle: str, feedback: str | None) -> str:
+    """화면에 보이는 안 이름. 수정 요청이 있으면 함께 적는다."""
+    return f"{angle} · 요청: {feedback}" if feedback else angle
 
 
 def with_feedback(angle: str, feedback: str | None) -> str:
@@ -63,38 +70,52 @@ class Step(ABC):
     ) -> SlotState:
         context = self.build_context(run, slot)
         angles = [self.angles[i % len(self.angles)] for i in range(settings.num_options)]
-        label = (lambda a: f"{a} · 요청: {feedback}") if feedback else (lambda a: a)
+        jobs = [
+            (
+                option_label(angle, feedback),
+                lambda i=i, angle=angle: self.generate_option(run, slot, context, with_feedback(angle, feedback), i),
+            )
+            for i, angle in enumerate(angles)
+        ]
+        return await self.collect_options(run, slot, jobs, on_option)
+
+    async def collect_options(
+        self,
+        run: RunState,
+        slot: str,
+        jobs: list[tuple[str, Callable[[], Awaitable[BaseModel]]]],
+        on_option: OnOption | None = None,
+    ) -> SlotState:
+        """(안 이름, 안 하나를 만드는 함수) 목록을 병렬로 돌려 끝나는 대로 on_option에 알린다.
+        일부 안만 실패하면 성공한 안으로 보여주고, 모두 실패했을 때만 단계 실패."""
         done: list[Option] = []  # 끝난 순서대로. 화면에 먼저 나온 안의 순서가 끝까지 유지된다
 
-        async def one(index: int, angle: str) -> None:
+        async def one(index: int, label: str, make: Callable[[], Awaitable[BaseModel]]) -> None:
             try:
-                content = await self._generate_with_retry(run, slot, context, with_feedback(angle, feedback), index)
+                content = await self.with_retry(make, f"{slot} 안 {index + 1}")
             except Exception:
                 if on_option:
                     on_option(slot, None)
                 raise
-            option = self.make_option(run, slot, label(angle), content)
+            option = self.make_option(run, slot, label, content)
             done.append(option)
             if on_option:
                 on_option(slot, option)
 
-        results = await asyncio.gather(*(one(i, a) for i, a in enumerate(angles)), return_exceptions=True)
-        # 일부 안만 실패하면 성공한 안으로 보여준다. 모두 실패했을 때만 단계 실패.
+        results = await asyncio.gather(*(one(i, label, make) for i, (label, make) in enumerate(jobs)), return_exceptions=True)
         if not done:
             raise next(r for r in results if isinstance(r, BaseException))
         return SlotState(options=done)
 
-    async def _generate_with_retry(
-        self, run: RunState, slot: str, context: dict[str, str], angle: str, index: int
-    ) -> BaseModel:
-        """모델 응답이 가끔 스키마를 어기거나 일시 오류가 나므로, 안 하나가 실패하면 그 안만 다시 시도한다."""
+    async def with_retry(self, make: Callable[[], Awaitable[T]], what: str) -> T:
+        """모델 응답이 가끔 스키마를 어기거나 일시 오류가 나므로, 실패하면 그 호출만 다시 시도한다."""
         for attempt in range(1, GENERATE_ATTEMPTS + 1):
             try:
-                return await self.generate_option(run, slot, context, angle, index)
+                return await make()
             except Exception:
                 if attempt == GENERATE_ATTEMPTS:
                     raise
-                logger.warning("%s/%s 안 %d 생성 실패, 다시 시도합니다", self.name, slot, index + 1, exc_info=True)
+                logger.warning("%s/%s 생성 실패, 다시 시도합니다", self.name, what, exc_info=True)
                 await asyncio.sleep(RETRY_BACKOFF * attempt)  # 할당량 초과(429)는 잠깐 기다려야 풀린다
         raise AssertionError("unreachable")
 

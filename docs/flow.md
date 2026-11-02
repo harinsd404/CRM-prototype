@@ -34,8 +34,8 @@ flowchart TD
 
     %% ③ 이미지 (Pod마다)
     D2 -- "Pod별 레이아웃 + 헤드·바디" --> LOOP["⬜ Pod 5개를 하나씩 차례로 요청<br/>generate?slot={Pod}"]
-    LOOP --> G3["🟦 ③-a 이미지 연출안 생성<br/>prompts/image_brief.md × 방향 3개"]
-    G3 -- "ImageBrief" --> N3["⬜ 화면비·Safe Zone을 레이아웃에 맞춤<br/>P2(image_model.md) + 연출안 → 이미지 프롬프트"]
+    LOOP --> G3["🟦 ③-a 이미지 연출안 생성<br/>prompts/image_brief.md 1번 → 서로 다른 3안"]
+    G3 -- "ImageBrief" --> N3["⬜ 화면비·Safe Zone을 레이아웃에 맞춤<br/>image_model.md에서 정면·후면·펼침 등 필요한 섹션만 + 연출안 → 이미지 프롬프트"]
     N3 -- "프롬프트 + 공식 제품 사진" --> G3b["🟦 ③-b 이미지 모델<br/>gemini-3.1-flash-image"]
     G3b -- "ImageOption × 3 (이미지 파일)" --> C3["⬜ 규칙 검사 check_brief<br/>컬러 라인업·L3 금지어·얼굴/손"]
     C3 --> H3{"🟧 사람: Pod마다 1개 선택"}
