@@ -10,9 +10,12 @@ Text will be added later in HTML.
 
 # Attachments
 
+Each attached image is preceded by a short caption in [brackets] saying what it is.
 ① Official product images — the single source of truth for the product design.
 The first image matches [제품 상태] (closed front / closed back / unfolded).
 A second sheet may show the closed device from the side, back, and front — use it for thickness and frame shape.
+Some references show the device several times or several units side by side.
+They are reference sheets: copy the DESIGN, never the number of devices or the layout.
 These product photos are all in Lavender.
 If [제품 컬러] is not 라벤더, a color line-up photo is also attached. Left to right it shows
 라벤더 (Lavender), 그라파이트 (Graphite), 크림 (Cream), 피스타치오 (Pistachio, the open device at the right).
@@ -24,7 +27,8 @@ If ① is missing, output only: "Attach the product reference image."
 
 # Output Rules (Top Priority)
 
-1. Output exactly ONE image. No collage, no multiple views, no split panels.
+1. Output exactly ONE image showing exactly ONE device. No collage, no multiple views, no split panels.
+   Follow the [Shot Lock] at the end for which side faces the camera.
 2. Follow the aspect ratio specified in [Input Data].
    Produce that ratio by composing the shot, never by padding the frame with bars.
 3. Render NO text at all: no headline, captions, logos, watermarks,
@@ -38,16 +42,16 @@ drawn wrong. Get both right.
 A. SILHOUETTE PROPORTION — the body is WIDE, not a narrow bar.
 
 - Closed body: 77 mm wide × 123 mm tall × 9 mm thick.
-  Width is 0.63 × height. Draw it as wide as an ordinary flagship smartphone.
+  Width is 0.63 × height — the proportion of a credit card.
+  It is noticeably SHORTER and WIDER than an ordinary smartphone (which is about 0.47).
   It is NOT a tall narrow slab. Do not elongate it.
 - Unfolded body: 158 mm wide × 123 mm tall × 4.5 mm thick.
   Unfolding DOUBLES the width and leaves the height unchanged.
   The open device is wider than it is tall (1.29 : 1), close to a small tablet.
 - Cover screen reads 10:16 (0.625). Main screen reads 4:3 (1.333).
 - Held in landscape, the closed phone's cover screen reads 16:10 (1.6) — no wider.
-- Check the silhouette before finishing: measure its bounding box.
-  If the closed body is narrower than 0.60 × its height, it is wrong — widen it.
-  If the open body is taller than it is wide, it is wrong — widen it.
+- The canvas ratio (16:9, 4:3, 1:1) is NOT the device ratio. Fill the canvas with the scene,
+  and keep the device at its own proportion inside it.
 
 B. REAR CAMERA COUNT — count out loud, then draw.
 
@@ -59,8 +63,7 @@ B. REAR CAMERA COUNT — count out loud, then draw.
 - The island is a vertical capsule in the SAME matte color as the back panel,
   sitting nearly flush. It is NOT a glossy raised black module.
 - Island size, lens diameter, and spacing must match ① exactly.
-- Before finishing, count the circular lens elements in your image.
-  The count must equal 2.
+- The island appears ONLY when the back faces the camera.
 
 # Composition Rules
 
@@ -106,8 +109,9 @@ Reproduce the exact phone from ①. The reference overrides any conflicting desc
    a wide lens stretches the near edge and makes the body look longer.
 2. The phone's vertical edges stay within 5 degrees of the image's vertical axis.
 3. Never stretch, squash, or scale the phone non-uniformly. Uniform resize only.
-4. Avoid steep three-quarter angles for [이미지 유형] = Base.
-   A near-frontal view makes the proportion verifiable.
+4. Avoid steep three-quarter, low, or high angles that foreshorten the device.
+   If the scene describes such an angle, keep the mood but shoot the device near-frontal.
+   A device lying flat on a table is shot from directly above.
 
 # People Rules
 
@@ -140,17 +144,13 @@ Reproduce the exact phone from ①. The reference overrides any conflicting desc
 - COLD : calm, efficient, trustworthy. Low saturation, neutral grey, white and charcoal.
   Diffused even lighting, minimal shadows. Clean, orderly, symmetric composition.
 
-# Negative
+# Final Check (fix before output)
 
-three rear lenses, extra lens, missing lens, flash drawn as a lens,
-glossy raised black camera bump, camera island in a different color from the back,
-narrow slab body, elongated body, tall thin foldable, body width under 0.60 of height,
-open device taller than wide, stretched or squashed phone, wide-angle distortion,
-keystoning, tilted phone, cropped phone, half-folded or L-shaped phone, stylus,
-visible screen crease, thick bezels, uneven bezels,
-fingers wrapping over the silhouette edge, extra or fused fingers,
-solid color band, letterbox bar, image border, rounded frame, outer matte,
-any text, letters, numbers, logos, watermark,
-duplicated phones, cartoon or 3D render look, cluttered background.
+- One device only, with the side named in [Shot Lock] facing the camera.
+- Closed body at credit-card proportion (0.63); open body wider than tall (1.29).
+- If the back is visible: one matte island in the body color, two equal lenses, one small flash dot.
+- Body color, frame, and bezels match the references; screen flat with no crease.
+- Hands natural with five fingers, edges of the device visible, no face.
+- One continuous photograph edge to edge, realistic photo (not a 3D render), no text or logos anywhere.
 
 # Input Data

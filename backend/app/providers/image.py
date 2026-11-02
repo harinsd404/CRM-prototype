@@ -127,11 +127,42 @@ _EDIT_PROMPT = """Edit the FIRST attached image according to the request below.
 - Change only what the request asks for. Keep everything else — composition, framing, lighting, mood — as it is.
 - The phone must stay exactly the device shown in the other attached official product images:
   same silhouette and proportion, exactly 2 rear lenses plus one LED flash, same body color.
+- Keep exactly ONE device, with the same side (front screen or back) facing the camera as in the image to edit.
 - Output ONE continuous photograph. No collage, borders, bars, or panels.
 - Render NO text, letters, numbers, logos, or watermarks.
 
 Request: {request}
 """
+
+
+# 참조 사진마다 앞에 붙이는 설명. 설명 없이 보내면 모델이 여러 대가 찍힌 시트·라인업 사진의 '대수와 배열'까지 따라 그린다
+_REFERENCE_CAPTIONS = {
+    "closed_front": "[Product reference — CLOSED, FRONT side: cover screen with punch-hole camera.]",
+    "closed_back": "[Product reference — CLOSED, BACK side: matte back panel with the two-lens camera island.]",
+    "unfolded": "[Product reference — FULLY UNFOLDED, inner main screen side. One flat device.]",
+    "closed_views": (
+        "[Measurement sheet — this is ONE single device photographed three times (side, back, front) "
+        "for thickness and frame shape only. These are NOT separate phones. "
+        "Never reproduce this side-by-side layout.]"
+    ),
+    "color_lineup": (
+        "[Color swatch only — several units in different body colors. Take ONLY the requested body color. "
+        "Ignore how many devices there are, their arrangement, and their angle.]"
+    ),
+    "style_anchor": "[Style anchor — copy only color grading, lighting and background tone. Ignore its content.]",
+}
+_EXTRA_CAPTION = (
+    "[Additional detail photo of the same device — use only for design details. "
+    "Ignore how many devices it shows and which side faces the camera.]"
+)
+
+
+def _reference_parts(references: list[Path]) -> list[types.Part | str]:
+    """참조 사진마다 무엇인지 설명을 앞에 붙여 끼워 넣는다."""
+    parts: list[types.Part | str] = []
+    for path in references:
+        parts += [_REFERENCE_CAPTIONS.get(path.stem, _EXTRA_CAPTION), _image_part(path)]
+    return parts
 
 
 class VertexGeminiProvider:
@@ -141,7 +172,7 @@ class VertexGeminiProvider:
         self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
         _require_references(references)
-        parts: list[types.Part | str] = [*map(_image_part, references), prompt]
+        parts: list[types.Part | str] = [*_reference_parts(references), prompt]
         return _save_image(await self._call_with_backoff(parts, ratio, seed), out_dir)
 
     async def edit(
@@ -150,8 +181,9 @@ class VertexGeminiProvider:
         _require_references(references)
         # 첫 첨부 = 고칠 이미지, 그 뒤 = 공식 제품 사진 (고치는 동안 제품 모양이 바뀌지 않게)
         parts: list[types.Part | str] = [
+            "[Image to edit]",
             _image_part(source),
-            *map(_image_part, references),
+            *_reference_parts(references),
             _EDIT_PROMPT.format(request=request),
         ]
         return _save_image(await self._call_with_backoff(parts, ratio, seed), out_dir)

@@ -54,6 +54,7 @@ export interface ImageBrief {
   color: string;
   state: string;
   view: string;
+  orientation?: "portrait" | "landscape";
   scene: string;
   props: string;
   screen_content: string;

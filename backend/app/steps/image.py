@@ -31,6 +31,14 @@ _COLOR_LINEUP = "color_lineup"
 _STYLE_ANCHOR = "style_anchor"  # P2의 첨부 ② (선택)
 _REFERENCE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 
+# 제품 상태로 정해지는 시점. 모델이 state와 다른 view를 쓰면 앞·뒷면이 섞여 나와서 코드가 맞춘다
+_STATE_VIEWS = {
+    "fully closed front": "straight-on front",
+    "fully closed back": "straight-on back",
+    "fully unfolded": "straight-on unfolded",
+}
+SCREEN_HIDDEN = "보이지 않음 (뒷면이 카메라를 향함)"
+
 # L3 Safe Zone 설명에 쓰면 이미지에 단색 띠가 생기는 단어 (원본 P1 Safe Zone Rules)
 _SAFE_ZONE_BANNED = ("여백", "빈 공간", "패널", "띠", "프레임")
 
@@ -43,9 +51,13 @@ class ImageBrief(BaseModel):
     color: str = Field(description="입력 컬러 라인업 중 1개")
     state: Literal["fully closed front", "fully closed back", "fully unfolded"]
     view: Literal["straight-on front", "straight-on back", "straight-on unfolded"]
+    orientation: Literal["portrait", "landscape"] = Field(
+        default="portrait",
+        description="접은 기기를 세로로 두면 portrait, 가로로 쥐면 landscape. 펼친 상태는 항상 landscape",
+    )
     scene: str = Field(description="장소, 시간대")
     props: str = Field(description="소품 2~3개")
-    screen_content: str = Field(description="화면 콘텐츠. 글자 없는 추상적 UI 설명")
+    screen_content: str = Field(description=f"화면 콘텐츠. 글자 없는 추상적 UI 설명. 뒷면이면 '{SCREEN_HIDDEN}'")
     person_hand: str = Field(description="인물/손 묘사 또는 '없음'")
     face: Literal["hidden", "no person"]
     composition: str = Field(description="앵글, 제품 점유율 %")
@@ -66,6 +78,14 @@ def normalize_brief(brief: ImageBrief, layout: str) -> None:
         brief.ratio = allowed[0]
     if layout != "L3":
         brief.safe_zone = NO_SAFE_ZONE
+    # 앞·뒷면이 한 장면에 섞이지 않게: 시점은 상태에서, 뒷면이면 화면은 보이지 않는다
+    brief.view = _STATE_VIEWS[brief.state]
+    if brief.state == "fully unfolded":
+        brief.orientation = "landscape"
+    if brief.state == "fully closed back":
+        brief.screen_content = SCREEN_HIDDEN
+    if brief.image_type in ("Base", "배경 연출"):
+        brief.person_hand, brief.face = "없음", "no person"
 
 
 def check_brief(brief: ImageBrief, layout: str, colors: list[str]) -> list[str]:
@@ -76,6 +96,8 @@ def check_brief(brief: ImageBrief, layout: str, colors: list[str]) -> list[str]:
         warnings.append(f"Safe Zone 설명에 금지어가 있습니다: {', '.join(words)}")
     if brief.face == "hidden" and brief.person_hand in ("", "없음"):
         warnings.append("얼굴이 hidden인데 인물/손 묘사가 없습니다.")
+    if brief.image_type in ("Hand-held", "인물 포함") and brief.person_hand in ("", "없음"):
+        warnings.append(f"이미지 유형이 {brief.image_type}인데 인물/손 묘사가 없습니다.")
     return warnings
 
 
@@ -107,6 +129,55 @@ def reference_images(run: RunState, brief: ImageBrief) -> list[Path]:
     return [product, *filter(None, found)]
 
 
+# 제품 상태·방향별로 '카메라에 무엇이 보이는가'를 코드가 고정해서 적는다 (LLM 연출안의 모순을 덮어쓴다)
+_SHOT_SIDES = {
+    "fully closed front": (
+        "The device is CLOSED. Its FRONT faces the camera: we see the cover screen "
+        "with the small punch-hole selfie camera. The back panel and the rear camera island are NOT visible."
+    ),
+    "fully closed back": (
+        "The device is CLOSED. Its BACK faces the camera: we see the matte back panel and the "
+        "two-lens camera island. The screen faces AWAY from the camera and is NOT visible — "
+        "no screen content, no viewfinder, no UI anywhere in the image. "
+        "If a person is holding it to take a photo, the camera is in front of the lens, looking at the back."
+    ),
+    "fully unfolded": (
+        "The device is FULLY UNFOLDED and perfectly flat. Its large inner main screen faces the camera. "
+        "The back panel and the rear camera island are NOT visible. It is one single flat slab, "
+        "not two phones side by side and not a book-like V shape."
+    ),
+}
+_SHOT_SHAPES = {
+    ("closed", "portrait"): (
+        "Upright (portrait). The silhouette is taller than wide with the proportion of a credit card: "
+        "width = 0.63 × height. Noticeably shorter and wider than an ordinary smartphone."
+    ),
+    ("closed", "landscape"): (
+        "Turned sideways (landscape). The silhouette is wider than tall with the proportion of a credit card "
+        "lying on its long side: height = 0.63 × width. Not a long thin bar."
+    ),
+    ("unfolded", "landscape"): (
+        "Wider than tall, close to a 4:3 photo: width = 1.29 × height. "
+        "It looks like a small square-ish tablet, not a wide 16:9 tablet."
+    ),
+}
+
+
+def shot_lock(brief: ImageBrief) -> str:
+    """이 이미지에서 기기가 몇 대이고 어느 면이 보이며 실루엣 비율이 얼마인지 — 모델이 가장 자주 틀리는 세 가지."""
+    folded = "unfolded" if brief.state == "fully unfolded" else "closed"
+    lines = [
+        "- Exactly ONE device in the whole image. No second phone, no reflection or mirror copy of it.",
+        f"- Side facing the camera: {_SHOT_SIDES[brief.state]}",
+        f"- Silhouette: {_SHOT_SHAPES[(folded, brief.orientation)]}",
+        "- Camera faces the device squarely, so its outline is a clean rounded rectangle "
+        "(not a trapezoid). Uniform scale only — never stretch it to fit the canvas.",
+    ]
+    if brief.face == "hidden":
+        lines.append("- No face: frame the person below the chin, or show only hands and arms.")
+    return "\n".join(lines)
+
+
 def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) -> str:
     """원본 P2(prompts/image_model.md) 뒤에 이 Pod의 이미지 Input Data를 붙인다."""
     template = (PROMPT_DIR / "image_model.md").read_text(encoding="utf-8")
@@ -119,7 +190,7 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
             f"- 이미지 유형 : {brief.image_type}",
             f"- 제품 컬러 : {brief.color}",
             f"- 제품 상태 : {brief.state}",
-            f"- 시점 : {brief.view}",
+            f"- 시점 : {brief.view} ({brief.orientation})",
             f"- 장면 : {brief.scene}",
             f"- 소품 : {brief.props}",
             f"- 화면 콘텐츠 : {brief.screen_content}",
@@ -131,7 +202,7 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
             f"- Text Safe Zone : {brief.safe_zone}",
         ]
     )
-    return f"{template.rstrip()}\n\n{data}\n"
+    return f"{template.rstrip()}\n\n{data}\n\n# Shot Lock (overrides any conflicting item above)\n\n{shot_lock(brief)}\n"
 
 
 class ImageStep(Step):
@@ -230,6 +301,7 @@ class ImageStep(Step):
             color=colors[index % len(colors)] if colors else "",
             state="fully unfolded" if pod == "디스플레이" else "fully closed front",
             view="straight-on unfolded" if pod == "디스플레이" else "straight-on front",
+            orientation="landscape" if pod == "디스플레이" else "portrait",
             scene="[예시] 오후의 밝은 카페 창가",
             props="커피잔, 노트",
             screen_content="회색 막대와 컬러 블록으로 된 추상 UI",
