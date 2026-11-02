@@ -87,6 +87,7 @@ export interface SlotState<S extends StepName> {
   options: Option<S>[];
   selected: number | null;
   edited: Option<S> | null;
+  pending: number; // 아직 만드는 중인 안의 수 (이미지는 한 장씩 끝나는 대로 options에 붙는다)
 }
 
 export interface StepState<S extends StepName> {

@@ -67,6 +67,7 @@ class SlotState(BaseModel):
     options: list[Option] = []
     selected: int | None = None
     edited: Option | None = None  # 사람이 선택한 안을 고친 경우
+    pending: int = 0  # 아직 만드는 중인 안의 수. 이미지는 한 장씩 끝나는 대로 options에 붙는다
 
     @property
     def selected_option(self) -> Option | None:

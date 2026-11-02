@@ -14,7 +14,7 @@ from app.config import settings
 from app.core import guard, store
 from app.core.render import build_html_input, render_crm
 from app.core.domain import PodName
-from app.core.state import MAIN_SLOT, STEP_ORDER, RunInput, RunState
+from app.core.state import MAIN_SLOT, STEP_ORDER, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
 from app.steps.copy import CopyOption, CopyStep
 from app.steps.image import ImageOption, ImageStep
@@ -90,6 +90,9 @@ async def generate_step(
         guard.check_image_budget(len(slots) * settings.num_options)
 
     with guard.run_lock(run_id):
+        if step_name == "image":
+            await _generate_images(step, run, slots, feedback)
+            return run
         try:
             generated = await step.generate(run, slots, feedback)
         except Exception as e:
@@ -104,6 +107,39 @@ async def generate_step(
         run.reset_after(step_name)
         store.save_run(run)
     return run
+
+
+async def _generate_images(step: Step, run: RunState, slots: list[str], feedback: str | None) -> None:
+    """이미지는 한 장에 수십 초가 걸려서, 한 장씩 끝나는 대로 저장한다. 화면은 생성 중에 실행을 다시 읽어 바로 보여준다.
+    모든 안이 실패하면 원래 안으로 되돌린다."""
+    state = run.steps["image"]
+    backup = {s: state.slots.get(s) for s in slots}, run.html
+    for s in slots:
+        state.slots[s] = SlotState(pending=settings.num_options)
+    run.reset_after("image")
+    store.save_run(run)
+
+    def on_option(slot: str, option: Option | None) -> None:
+        current = state.slots[slot]
+        current.pending -= 1
+        if option is not None:
+            current.options.append(option)
+        store.save_run(run)
+
+    try:
+        generated = await step.generate(run, slots, feedback, on_option)
+    except Exception as e:
+        logger.exception("image 단계 생성 실패")
+        previous, run.html = backup
+        for s, old in previous.items():
+            if old is None:
+                state.slots.pop(s, None)
+            else:
+                state.slots[s] = old
+        store.save_run(run)
+        raise HTTPException(502, f"'image' 생성에 실패했습니다: {e}") from e
+    state.slots.update(generated)
+    store.save_run(run)
 
 
 @router.post("/{run_id}/steps/{step_name}/select", response_model=RunState)

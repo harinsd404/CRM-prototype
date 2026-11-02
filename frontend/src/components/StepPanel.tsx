@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
-import { formatElapsed, useElapsed, useLeaveWarning } from "../hooks";
+import { useLeaveWarning, useRunPolling } from "../hooks";
 import {
   STEP_LABELS,
   STEP_ORDER,
@@ -42,8 +42,9 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
     done: number;
     total: number;
   } | null>(null);
-  const elapsed = useElapsed(busy !== null);
   useLeaveWarning(busy !== null);
+  // 이미지는 한 장씩 끝나는 대로 서버에 저장되므로, 생성 중에는 실행을 다시 읽어 끝난 이미지부터 보여준다
+  useRunPolling(step === "image" && busy !== null, run, onChange);
 
   const call = async (key: string, action: () => Promise<RunState>): Promise<boolean> => {
     setBusy(key);
@@ -95,7 +96,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
     else call("all", () => api.generate(run.id, step));
   };
   const generateMissing = () => confirmReset() && generateEachPod("missing", missingPods);
-  const busyLabel = `${progress ? `${progress.pod} 생성 중 (${progress.done + 1}/${progress.total})` : "생성 중"} · ${formatElapsed(elapsed)}`;
+  const busyLabel = progress ? `${progress.pod} 생성 중 (${progress.done + 1}/${progress.total})` : "생성 중";
 
   return (
     <section
@@ -160,7 +161,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             title={multiSlot ? `${i + 1}. ${slotName}` : null}
             slot={state.slots[slotName] ?? null}
             busy={busy}
-            elapsed={elapsed}
+            generating={busy === slotName || progress?.pod === slotName}
             onGenerate={
               multiSlot ? (feedback) => call(slotName, () => api.generate(run.id, step, slotName, feedback)) : null
             }
@@ -188,7 +189,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
 const FIRST_GUIDE: Record<StepName, string> = {
   pod: "입력한 타겟과 스펙을 보고 AI가 Pod 순서·레이아웃을 방향이 다른 3안으로 만듭니다.",
   copy: "고른 Pod 순서에 맞춰 5개 Pod의 카피를 3안으로 만듭니다.",
-  image: "Pod마다 이미지 3안을 만듭니다. Pod 하나에 1~3분 걸리고, 끝난 Pod부터 바로 나타납니다.",
+  image: "Pod마다 이미지 3안을 만듭니다. 다 만든 이미지부터 한 장씩 바로 나타납니다.",
 };
 
 /** 지금 이 단계에서 무엇을 하면 되는지 한 줄로 알려준다. */
@@ -242,13 +243,13 @@ interface SlotViewProps {
   title: string | null;
   slot: SlotState<StepName> | null; // 이미지 단계에서 아직 생성하지 않은 Pod는 null
   busy: BusyKey;
-  elapsed: number;
+  generating: boolean; // 이 슬롯의 안을 만드는 중
   onGenerate: ((feedback?: string) => Promise<boolean>) | null; // 이미지 단계: 이 Pod만 (요청 반영해) 다시 생성
   onSelect: (index: number, edited?: StepContents[StepName]) => void;
   onRevise: (index: number, request: string, pods?: string[]) => Promise<boolean>;
 }
 
-function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate, onSelect, onRevise }: SlotViewProps) {
+function SlotView({ step, run, slotName, title, slot, busy, generating, onGenerate, onSelect, onRevise }: SlotViewProps) {
   const disabled = busy !== null;
   const [requesting, setRequesting] = useState(false); // 이 Pod 요청하며 다시 생성
   const [revising, setRevising] = useState<number | null>(null); // 수정 요청 중인 이미지 번호
@@ -265,9 +266,9 @@ function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate,
           </h3>
           {onGenerate && (
             <div className="flex items-center gap-1.5">
-              {busy === slotName && (
+              {generating && (
                 <span className="flex items-center gap-1 text-xs text-gray-500">
-                  <Spinner className="h-3.5 w-3.5" /> 생성 중 · {formatElapsed(elapsed)} (보통 1~3분)
+                  <Spinner className="h-3.5 w-3.5" /> 생성 중
                 </span>
               )}
               {slot ? (
@@ -318,7 +319,16 @@ function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate,
       )}
 
       {!slot ? (
-        title && <p className="mt-3 rounded-lg bg-gray-100 p-4 text-sm text-gray-500">아직 생성하지 않았습니다.</p>
+        title &&
+        (generating ? (
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <PendingCard key={i} />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 rounded-lg bg-gray-100 p-4 text-sm text-gray-500">아직 생성하지 않았습니다.</p>
+        ))
       ) : (
         <div className="mt-4 grid gap-4 md:grid-cols-3">
           {slot.options.map((option, i) => {
@@ -357,6 +367,8 @@ function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate,
               </div>
             );
           })}
+          {generating &&
+            Array.from({ length: slot.pending }, (_, i) => <PendingCard key={`pending-${i}`} />)}
         </div>
       )}
 
@@ -385,6 +397,15 @@ function SlotView({ step, run, slotName, title, slot, busy, elapsed, onGenerate,
           onSave={(edited) => onSelect(slot.selected!, edited)}
         />
       )}
+    </div>
+  );
+}
+
+/** 아직 만드는 중인 이미지 자리 */
+function PendingCard() {
+  return (
+    <div className="flex aspect-video items-center justify-center gap-1.5 rounded-xl border border-dashed bg-gray-50 text-sm text-gray-500">
+      <Spinner className="h-4 w-4" /> 생성 중
     </div>
   );
 }

@@ -74,7 +74,10 @@ def save_run(run: RunState) -> None:
     run.updated_at = datetime.now()
     path = run_dir(run.id)
     path.mkdir(parents=True, exist_ok=True)
-    (path / "state.json").write_text(run.model_dump_json(indent=2), encoding="utf-8")
+    # 생성 중에도 화면이 state.json을 읽으므로, 다 쓴 임시 파일로 한 번에 바꿔 반쯤 쓴 파일을 읽지 않게 한다
+    tmp = path / "state.json.tmp"
+    tmp.write_text(run.model_dump_json(indent=2), encoding="utf-8")
+    tmp.replace(path / "state.json")
 
 
 def load_run(run_id: str) -> RunState | None:

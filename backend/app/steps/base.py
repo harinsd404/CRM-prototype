@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Any, ClassVar
 
@@ -12,6 +13,9 @@ from app.core.state import MAIN_SLOT, Option, RunState, SlotState
 from app.llm import get_chat_model
 
 logger = logging.getLogger(__name__)
+
+# 안 하나가 끝날 때마다 부른다 (슬롯 이름, 만든 안 또는 끝내 실패하면 None)
+OnOption = Callable[[str, Option | None], None]
 
 GENERATE_ATTEMPTS = 3
 RETRY_BACKOFF = 5  # 초. 두 번째 시도는 5초, 세 번째는 10초 뒤
@@ -54,22 +58,31 @@ class Step(ABC):
         사람이 판단할 위반은 경고 문구로 돌려준다."""
         return []
 
-    async def generate_slot(self, run: RunState, slot: str, feedback: str | None = None) -> SlotState:
+    async def generate_slot(
+        self, run: RunState, slot: str, feedback: str | None = None, on_option: OnOption | None = None
+    ) -> SlotState:
         context = self.build_context(run, slot)
         angles = [self.angles[i % len(self.angles)] for i in range(settings.num_options)]
-        results = await asyncio.gather(
-            *(
-                self._generate_with_retry(run, slot, context, with_feedback(angle, feedback), i)
-                for i, angle in enumerate(angles)
-            ),
-            return_exceptions=True,
-        )
-        # 일부 안만 실패하면 성공한 안으로 보여준다. 모두 실패했을 때만 단계 실패.
-        succeeded = [(a, r) for a, r in zip(angles, results) if not isinstance(r, BaseException)]
-        if not succeeded:
-            raise next(r for r in results if isinstance(r, BaseException))
         label = (lambda a: f"{a} · 요청: {feedback}") if feedback else (lambda a: a)
-        return SlotState(options=[self.make_option(run, slot, label(a), r) for a, r in succeeded])
+        done: list[Option] = []  # 끝난 순서대로. 화면에 먼저 나온 안의 순서가 끝까지 유지된다
+
+        async def one(index: int, angle: str) -> None:
+            try:
+                content = await self._generate_with_retry(run, slot, context, with_feedback(angle, feedback), index)
+            except Exception:
+                if on_option:
+                    on_option(slot, None)
+                raise
+            option = self.make_option(run, slot, label(angle), content)
+            done.append(option)
+            if on_option:
+                on_option(slot, option)
+
+        results = await asyncio.gather(*(one(i, a) for i, a in enumerate(angles)), return_exceptions=True)
+        # 일부 안만 실패하면 성공한 안으로 보여준다. 모두 실패했을 때만 단계 실패.
+        if not done:
+            raise next(r for r in results if isinstance(r, BaseException))
+        return SlotState(options=done)
 
     async def _generate_with_retry(
         self, run: RunState, slot: str, context: dict[str, str], angle: str, index: int
@@ -85,8 +98,10 @@ class Step(ABC):
                 await asyncio.sleep(RETRY_BACKOFF * attempt)  # 할당량 초과(429)는 잠깐 기다려야 풀린다
         raise AssertionError("unreachable")
 
-    async def generate(self, run: RunState, slots: list[str], feedback: str | None = None) -> dict[str, SlotState]:
-        states = await asyncio.gather(*(self.generate_slot(run, slot, feedback) for slot in slots))
+    async def generate(
+        self, run: RunState, slots: list[str], feedback: str | None = None, on_option: OnOption | None = None
+    ) -> dict[str, SlotState]:
+        states = await asyncio.gather(*(self.generate_slot(run, slot, feedback, on_option) for slot in slots))
         return dict(zip(slots, states))
 
     def make_option(self, run: RunState, slot: str, angle: str, content: BaseModel) -> Option:
