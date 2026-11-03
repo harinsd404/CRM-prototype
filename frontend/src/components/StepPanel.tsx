@@ -60,10 +60,12 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
     }
   };
 
+  // 안을 고르거나 고치는 것은 뒤 단계 결과를 그대로 둔다 (backend runs.py _apply_change).
+  // 단계 전체를 다시 생성할 때만 고를 안이 새로 바뀌므로 뒤 단계가 비워진다.
   const laterSteps = STEP_ORDER.slice(STEP_ORDER.indexOf(step) + 1);
   const hasLaterWork = laterSteps.some((s) => Object.keys(run.steps[s].slots).length > 0) || run.html !== null;
   const confirmReset = () =>
-    !hasLaterWork || window.confirm("이 단계를 바꾸면 뒤 단계 결과가 초기화됩니다. 계속할까요?");
+    !hasLaterWork || window.confirm("다시 생성하면 뒤 단계 결과가 초기화됩니다. 계속할까요?");
 
   const pods = selectedPodOrder(run);
   const multiSlot = step === "image";
@@ -95,7 +97,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
     if (multiSlot) generateEachPod("all", pods);
     else call("all", () => api.generate(run.id, step));
   };
-  const generateMissing = () => confirmReset() && generateEachPod("missing", missingPods);
+  const generateMissing = () => generateEachPod("missing", missingPods);
   const busyLabel = progress ? `${progress.pod} 생성 중 (${progress.done + 1}/${progress.total})` : "생성 중";
 
   return (
@@ -165,21 +167,13 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             onGenerate={
               multiSlot ? (feedback) => call(slotName, () => api.generate(run.id, step, slotName, feedback)) : null
             }
-            onSelect={(index, edited) =>
-              confirmReset() && call(slotName, () => api.select(run.id, step, slotName, index, edited))
-            }
+            onSelect={(index, edited) => call(slotName, () => api.select(run.id, step, slotName, index, edited))}
             onRevise={(index, request, pods) =>
-              confirmReset()
-                ? call(multiSlot ? `${slotName}#${index}` : slotName, () =>
-                    api.revise(run.id, step, {
-                      slot: slotName,
-                      index,
-                      request,
-                      pods,
-                    }),
-                  )
-                : Promise.resolve(false)
+              call(multiSlot ? `${slotName}#${index}` : slotName, () =>
+                api.revise(run.id, step, { slot: slotName, index, request, pods }),
+              )
             }
+            onKeep={() => call(slotName, () => api.keepImage(run.id, slotName))}
           />
         ))}
     </section>
@@ -219,7 +213,7 @@ function StepGuide({
     text =
       step === "image"
         ? "모든 Pod를 골랐습니다. ④에서 시안을 조립하세요."
-        : "선택을 마쳤습니다. 필요하면 아래에서 직접 고치거나 AI에게 수정을 요청할 수 있습니다.";
+        : "선택을 마쳤습니다. 아래에서 직접 고치거나 AI에게 수정을 요청해도 뒤 단계 결과는 그대로 남습니다.";
     next = nextStep
       ? { href: `#step-${nextStep}`, label: `${STEP_LABELS[nextStep]}로 이동` }
       : { href: "#step-render", label: "④ 시안 조립으로 이동" };
@@ -247,9 +241,22 @@ interface SlotViewProps {
   onGenerate: ((feedback?: string) => Promise<boolean>) | null; // 이미지 단계: 이 Pod만 (요청 반영해) 다시 생성
   onSelect: (index: number, edited?: StepContents[StepName]) => void;
   onRevise: (index: number, request: string, pods?: string[]) => Promise<boolean>;
+  onKeep: () => void; // 앞 단계가 바뀌었다는 표시를 지우고 지금 이미지를 그대로 쓴다
 }
 
-function SlotView({ step, run, slotName, title, slot, busy, generating, onGenerate, onSelect, onRevise }: SlotViewProps) {
+function SlotView({
+  step,
+  run,
+  slotName,
+  title,
+  slot,
+  busy,
+  generating,
+  onGenerate,
+  onSelect,
+  onRevise,
+  onKeep,
+}: SlotViewProps) {
   const disabled = busy !== null;
   const [requesting, setRequesting] = useState(false); // 이 Pod 요청하며 다시 생성
   const [revising, setRevising] = useState<number | null>(null); // 수정 요청 중인 이미지 번호
@@ -302,6 +309,23 @@ function SlotView({ step, run, slotName, title, slot, busy, generating, onGenera
               )}
             </div>
           )}
+        </div>
+      )}
+
+      {slot && slot.stale.length > 0 && !generating && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <ul className="space-y-0.5">
+            {slot.stale.map((note) => (
+              <li key={note}>· {note}. 필요하면 이 Pod만 다시 생성하세요.</li>
+            ))}
+          </ul>
+          <button
+            onClick={onKeep}
+            disabled={disabled}
+            className="rounded-full border border-amber-300 bg-white px-3 py-1 hover:bg-amber-100 disabled:opacity-40"
+          >
+            지금 이미지 그대로 쓰기
+          </button>
         </div>
       )}
 

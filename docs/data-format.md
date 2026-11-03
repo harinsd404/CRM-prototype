@@ -108,6 +108,8 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 | `options` | `Option[]` | 생성된 안 목록 |
 | `selected` | int \| null | **사람이 고른 안의 번호(0부터)**. null이면 아직 안 고름 |
 | `edited` | `Option` \| null | 고른 안을 사람이 직접 고치거나 카피 수정 요청으로 고친 경우의 수정본. 있으면 다음 단계는 원안 대신 이걸 쓴다 |
+| `pending` | int | 아직 만드는 중인 안의 수 (이미지는 한 장씩 끝나는 대로 `options`에 붙는다) |
+| `stale` | string[] | 이 안들을 만든 뒤 앞 단계에서 바뀐 점 (③ 이미지: 카피 변경, 레이아웃과 화면비·Safe Zone 불일치). 다시 생성하거나 `POST /api/runs/{id}/steps/image/slots/{Pod}/keep`으로 비운다 |
 
 다음 단계로 넘어가는 값은 `edited ?? options[selected]`의 `content`다.
 
@@ -121,7 +123,7 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 | `created_at`, `updated_at` | ISO 8601 | |
 | `input` | `RunInput` | 1절 |
 | `steps` | `{"pod"\|"copy"\|"image": {"slots": {슬롯명: SlotState}}}` | 단계별 상태. 아직 생성 전이면 `slots`가 빈 객체 |
-| `html` | string \| null | ④ 조립 결과. 앞 단계가 바뀌면 null로 초기화 |
+| `html` | string \| null | ④ 조립 결과. 앞 단계를 다시 생성하면 null, 고치기만 하면 바로 다시 조립 |
 
 ```json
 {

@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 from app.config import settings
 from app.core import guard, store
 from app.core.render import build_html_input, render_crm
-from app.core.domain import PodName
+from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE, PodName
 from app.core.state import MAIN_SLOT, STEP_ORDER, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
 from app.steps.copy import CopyOption, CopyStep
@@ -154,6 +154,7 @@ def select_option(run_id: str, step_name: str, body: SelectRequest) -> RunState:
     if not 0 <= body.index < len(slot.options):
         raise HTTPException(400, f"선택할 수 있는 안은 0~{len(slot.options) - 1}번입니다.")
 
+    before = _snapshot(run)
     edited = None
     if body.edited is not None:
         try:
@@ -163,7 +164,7 @@ def select_option(run_id: str, step_name: str, body: SelectRequest) -> RunState:
 
     slot.selected = body.index
     slot.edited = edited
-    run.reset_after(step_name)
+    _apply_change(run, step_name, before)
     store.save_run(run)
     return run
 
@@ -189,6 +190,7 @@ async def revise_option(run_id: str, step_name: str, body: ReviseRequest) -> Run
         guard.check_image_budget(1)
 
     with guard.run_lock(run_id):
+        before = _snapshot(run)
         try:
             if isinstance(step, ImageStep):
                 base = slot.options[body.index]
@@ -212,8 +214,88 @@ async def revise_option(run_id: str, step_name: str, body: ReviseRequest) -> Run
             logger.exception("%s 수정 요청 실패", step_name)
             raise HTTPException(502, f"수정 요청 처리에 실패했습니다: {e}") from e
 
-        run.reset_after(step_name)
+        _apply_change(run, step_name, before)
         store.save_run(run)
+    return run
+
+
+def _snapshot(run: RunState) -> dict[str, dict[str, str]]:
+    """뒤 단계(이미지)에 영향을 주는 앞 단계 선택 값을 Pod별로 모은다. 바뀌기 전후를 비교하는 데 쓴다."""
+    snapshot: dict[str, dict[str, str]] = {}
+    if run.is_complete("copy"):
+        for p in run.selected("copy")["pods"]:
+            snapshot[p["pod"]] = {"headline": p["headline"], "body": p["body"]}
+    return snapshot
+
+
+def _apply_change(run: RunState, step_name: str, before: dict[str, dict[str, str]]) -> None:
+    """선택·직접 수정·수정 요청 뒤에 부른다. 이미 만든 뒤 단계 결과는 지우지 않고 바뀐 내용만 반영한다.
+    - ① Pod 순서가 바뀌면 ② 카피안의 Pod 순서를 따라 맞춘다 (카피 내용은 그대로).
+    - ③ 이미지는 그대로 두고, 그 Pod의 카피가 바뀌었거나 바뀐 레이아웃에 화면비가 맞지 않으면 표시만 한다.
+    - ④ 시안을 이미 조립했다면 바로 다시 조립한다.
+    앞 단계를 다시 '생성'하면 고를 안이 새로 바뀌므로 그때는 generate_step이 뒤 단계를 비운다."""
+    if step_name == "pod" and run.is_complete("pod"):
+        _follow_pod_order(run)
+
+    after = _snapshot(run)
+    plan = {item["pod"]: item["layout"] for item in run.selected("pod")["items"]} if run.is_complete("pod") else {}
+    for pod, slot in run.steps["image"].slots.items():
+        notes = [n for n in slot.stale if not n.startswith("레이아웃")]  # 레이아웃 표시는 매번 새로 판단한다
+        if pod in before and pod in after and before[pod] != after[pod] and COPY_CHANGED not in notes:
+            notes.append(COPY_CHANGED)
+        option = slot.selected_option or (slot.options[0] if slot.options else None)
+        layout = plan.get(pod)
+        if option and layout:
+            brief = option.content["brief"]
+            if brief["ratio"] not in LAYOUT_RATIOS[layout]:
+                notes.append(f"레이아웃이 {layout}로 바뀌어 이미지 화면비({brief['ratio']})가 맞지 않습니다")
+            elif layout == "L3" and brief["safe_zone"] == NO_SAFE_ZONE:
+                notes.append("레이아웃이 L3로 바뀌었지만 이 이미지에는 글자를 얹을 빈 자리(Safe Zone)가 없습니다")
+        slot.stale = notes
+
+    if run.html is not None:
+        if all(run.is_complete(name) for name in STEP_ORDER):
+            _render(run)
+        else:
+            run.html = None
+
+
+COPY_CHANGED = "이미지를 만든 뒤 이 Pod의 카피가 바뀌었습니다"
+
+
+def _follow_pod_order(run: RunState) -> None:
+    """②의 모든 카피안을 ①에서 고른 Pod 순서로 다시 늘어놓고 규칙 검사를 다시 한다."""
+    slot = run.steps["copy"].slots.get(MAIN_SLOT)
+    if slot is None:
+        return
+    order = [item["pod"] for item in run.selected("pod")["items"]]
+    rank = {pod: i for i, pod in enumerate(order)}
+    step = STEPS["copy"]
+    for option in [*slot.options, *([slot.edited] if slot.edited else [])]:
+        pods = sorted(option.content["pods"], key=lambda p: rank.get(p["pod"], len(order)))
+        copy = CopyOption.model_validate({**option.content, "pods": pods})
+        option.warnings = step.postprocess(run, MAIN_SLOT, copy)
+        option.content = copy.model_dump()
+
+
+def _render(run: RunState) -> None:
+    html_input = build_html_input(run)
+    run.html = render_crm(run, html_input)
+    # 원본 P1 [8]과 같은 모양의 HTML 합성용 JSON도 남긴다
+    (store.run_dir(run.id) / "html_input.json").write_text(
+        json.dumps(html_input, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+@router.post("/{run_id}/steps/image/slots/{slot}/keep", response_model=RunState)
+def keep_image(run_id: str, slot: str) -> RunState:
+    """앞 단계가 바뀌었다는 표시를 지운다. 사람이 지금 이미지를 그대로 쓰기로 한 경우."""
+    run = _get_run(run_id)
+    state = run.steps["image"].slots.get(slot)
+    if state is None:
+        raise HTTPException(400, f"이미지 단계에 생성된 '{slot}' 슬롯이 없습니다.")
+    state.stale = []
+    store.save_run(run)
     return run
 
 
@@ -223,13 +305,7 @@ def render(run_id: str) -> RunState:
     missing = [name for name in STEP_ORDER if not run.is_complete(name)]
     if missing:
         raise HTTPException(400, f"아직 선택하지 않은 단계가 있습니다: {', '.join(missing)}")
-
-    html_input = build_html_input(run)
-    run.html = render_crm(run, html_input)
-    # 원본 P1 [8]과 같은 모양의 HTML 합성용 JSON도 남긴다
-    (store.run_dir(run.id) / "html_input.json").write_text(
-        json.dumps(html_input, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    _render(run)
     store.save_run(run)
     return run
 

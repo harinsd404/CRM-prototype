@@ -50,6 +50,10 @@ export const api = {
       body: JSON.stringify({ slot, index, edited: edited ?? null }),
     }),
 
+  // 앞 단계가 바뀌었다는 표시를 지우고 지금 이미지를 그대로 쓴다
+  keepImage: (runId: string, slot: string) =>
+    request<RunState>(`/runs/${runId}/steps/image/slots/${encodeURIComponent(slot)}/keep`, { method: "POST" }),
+
   render: (runId: string) => request<RunState>(`/runs/${runId}/render`, { method: "POST" }),
 
   // 최종 시안 ZIP (index.html + images/ + fonts/ + html_input.json)
