@@ -31,3 +31,9 @@ def health() -> dict[str, str]:
         "image_model": active_image_model() if settings.image_provider == "vertex" else "-",
         "images_today": f"{images_used_today()}/{settings.image_daily_limit}",
     }
+
+
+# 배포: 빌드된 프론트(frontend/dist)가 있으면 같은 포트의 / 에서 서빙한다. /api 라우트보다 뒤에 둬야 한다
+FRONTEND_DIST = BACKEND_DIR.parent / "frontend" / "dist"
+if FRONTEND_DIST.is_dir():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
