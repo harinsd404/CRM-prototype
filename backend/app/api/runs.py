@@ -338,7 +338,7 @@ def download(run_id: str) -> Response:
         for name in sorted(set(re.findall(r'src="images/([^"]+)"', html))):
             zf.write(folder / "images" / name, f"images/{name}")
         for name in sorted(set(re.findall(r"url\('fonts/([^']+)'\)", html))):
-            if (_FONTS_DIR / name).exists():  # 폰트는 git에 없어서 없는 환경도 있다
+            if (_FONTS_DIR / name).exists():  # 폰트 파일을 지운 환경도 있다
                 zf.write(_FONTS_DIR / name, f"fonts/{name}")
         if (folder / "html_input.json").exists():
             zf.write(folder / "html_input.json", "html_input.json")

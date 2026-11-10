@@ -11,10 +11,6 @@ dist/
 .env
 backend/data/
 
-# 공식 제품 사진·폰트는 사내 자료일 수 있어 올리지 않는다
-backend/assets/product/*
-!backend/assets/product/.gitkeep
-backend/assets/fonts/*
-!backend/assets/fonts/.gitkeep
+# 공식 제품 사진·폰트는 사내에서만 공유하는 저장소라 함께 올린다
 
 .DS_Store
