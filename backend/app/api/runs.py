@@ -315,7 +315,9 @@ def preview(run_id: str) -> str:
     run = _get_run(run_id)
     if run.html is None:
         raise HTTPException(404, "아직 조립된 시안이 없습니다.")
-    return run.html
+    # 배포 경로 아래에서 열리면 시안 안의 이미지·폰트 주소(/api/...)에도 경로를 붙인다
+    base = settings.base_path.rstrip("/")
+    return run.html.replace("/api/", f"{base}/api/") if base else run.html
 
 
 _FONTS_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"

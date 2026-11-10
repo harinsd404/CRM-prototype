@@ -10,6 +10,23 @@ settings.data_dir.mkdir(parents=True, exist_ok=True)
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="CRM 시안 생성 프로토타입")
+
+
+class StripBasePath:
+    """/park/api/... 로 들어온 요청을 /api/... 로 바꿔 처리한다 (경로 없이 들어온 요청도 그대로 받는다)."""
+
+    def __init__(self, app, base: str) -> None:
+        self.app = app
+        self.base = base.rstrip("/")
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        if self.base and scope["type"] in ("http", "websocket") and (path == self.base or path.startswith(self.base + "/")):
+            scope = {**scope, "path": path[len(self.base):] or "/"}
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(StripBasePath, base=settings.base_path)
 app.include_router(runs.router, prefix="/api")
 # 라우터를 마운트보다 먼저 등록해야 POST /api/uploads가 아래 /api/uploads 마운트에 가려지지 않는다
 app.include_router(product_images.router, prefix="/api")

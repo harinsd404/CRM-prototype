@@ -1,5 +1,5 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { api } from "../api";
+import { api, withBase } from "../api";
 import { MAX_EXTRA_PRODUCT_IMAGES, type ProductImage, type RunInput } from "../types";
 import { Spinner } from "./icons";
 
@@ -31,8 +31,8 @@ export default function ProductImagesField({ value, onChange, extras, onExtrasCh
 
   const urlOf = (slot: ProductImage) => {
     const choice = value[slot.role];
-    if (choice === undefined) return slot.default_url;
-    return choice === null ? null : `/api/uploads/${choice}`;
+    if (choice === undefined) return withBase(slot.default_url);
+    return choice === null ? null : withBase(`/api/uploads/${choice}`);
   };
 
   const set = (role: string, choice: string | null | undefined) => {
@@ -144,7 +144,7 @@ export default function ProductImagesField({ value, onChange, extras, onExtrasCh
         {extras.map((name, i) => (
           <div key={name} className="flex flex-col rounded-lg border p-2">
             <div className="flex aspect-square items-center justify-center overflow-hidden rounded-md bg-gray-50">
-              <img src={`/api/uploads/${name}`} alt={`추가 사진 ${i + 1}`} className="h-full w-full object-contain" />
+              <img src={withBase(`/api/uploads/${name}`)} alt={`추가 사진 ${i + 1}`} className="h-full w-full object-contain" />
             </div>
             <p className="mt-2 text-xs font-medium">추가 사진 {i + 1}</p>
             <div className="mt-1.5 text-xs">

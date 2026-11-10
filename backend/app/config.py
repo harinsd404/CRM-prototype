@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     image_timeout: float = 120
 
     num_options: int = 3
+    # 배포 경로 (예: /park). 프록시가 이 경로를 떼지 않고 넘길 때 앱이 떼고 처리한다. 비우면 / 에서 동작
+    base_path: str = ""
     # 폭주 방지 (app/core/guard.py)
     generate_limit_per_minute: int = 10  # 생성 요청 수 상한 (연타·반복 호출 대비)
     image_daily_limit: int = 100  # 하루 Vertex 이미지 호출 상한 (재시도 포함)

@@ -1,7 +1,15 @@
 import type { ProductImage, RunInput, RunState, StepContents, StepName } from "./types";
 
+// 배포 경로(예: /park) 아래에서 열릴 때를 위해 /api 주소 앞에 붙인다. 로컬 개발은 빈 문자열
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+/** 서버가 준 /api/... 주소(이미지·업로드 등)에 배포 경로를 붙인다 */
+export function withBase<T extends string | null | undefined>(url: T): T {
+  return (typeof url === "string" && url.startsWith("/api/") ? `${BASE}${url}` : url) as T;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(`${BASE}/api${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
@@ -57,7 +65,7 @@ export const api = {
   render: (runId: string) => request<RunState>(`/runs/${runId}/render`, { method: "POST" }),
 
   // 최종 시안 ZIP (index.html + images/ + fonts/ + html_input.json)
-  downloadUrl: (run: RunState) => `/api/runs/${run.id}/download?v=${encodeURIComponent(run.updated_at)}`,
+  downloadUrl: (run: RunState) => `${BASE}/api/runs/${run.id}/download?v=${encodeURIComponent(run.updated_at)}`,
 
-  previewUrl: (run: RunState) => `/api/runs/${run.id}/preview?v=${encodeURIComponent(run.updated_at)}`,
+  previewUrl: (run: RunState) => `${BASE}/api/runs/${run.id}/preview?v=${encodeURIComponent(run.updated_at)}`,
 };

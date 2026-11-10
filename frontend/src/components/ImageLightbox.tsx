@@ -1,3 +1,4 @@
+import { withBase } from "../api";
 import { useEffect } from "react";
 import type { ImageContent } from "../types";
 
@@ -24,7 +25,7 @@ export default function ImageLightbox({ content, title, onClose }: Props) {
       className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-gray-900/85 p-6"
     >
       <img
-        src={content.image_url}
+        src={withBase(content.image_url)}
         alt={content.brief.concept}
         onClick={(e) => e.stopPropagation()}
         className="max-h-[80vh] max-w-full rounded-lg object-contain shadow-2xl"

@@ -1,3 +1,4 @@
+import { withBase } from "../api";
 import { useState, type KeyboardEvent } from "react";
 import type { CopyContent, ImageContent, Option, PodContent, StepName } from "../types";
 import { LAYOUT_LABELS } from "../types";
@@ -246,7 +247,7 @@ function ImageBody({ content, title }: { content: ImageContent; title: string })
     <>
       <div className="relative">
         <img
-          src={content.image_url}
+          src={withBase(content.image_url)}
           alt={brief.concept}
           style={{ aspectRatio: brief.ratio.replace(":", " / ") }}
           className="w-full rounded-lg bg-gray-100 object-cover"
