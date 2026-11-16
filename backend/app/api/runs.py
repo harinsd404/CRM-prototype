@@ -17,7 +17,8 @@ from app.core import guard, store
 from app.core.db import User
 from app.core.render import build_html_input, render_crm
 from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE
-from app.core.templates import get_template
+from app.core import templates
+from app.core.templates import TemplateNameTaken, TemplateOut, get_template
 from app.core.state import MAIN_SLOT, STEP_ORDER, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
 from app.steps.copy import CopyOption, CopyStep
@@ -95,6 +96,41 @@ def list_runs(user: CurrentUser) -> list[RunSummary]:
 def _is_complete(run: RunState, step_name: str) -> bool:
     previous = run.previous_step(step_name)
     return (previous is None or _is_complete(run, previous)) and run.is_complete(step_name)
+
+
+class SaveTemplateRequest(BaseModel):
+    template_id: int | None = None  # 있으면 그 템플릿을 덮어쓴다
+    name: str | None = Field(None, max_length=100)  # 새 템플릿 이름 (덮어쓸 때 주면 이름도 바꾼다)
+
+
+@router.post("/{run_id}/template", response_model=TemplateOut)
+def save_as_template(run_id: str, body: SaveTemplateRequest, user: CurrentUser) -> TemplateOut:
+    """이 실행의 제품명·컬러·Pod·제품 사진을 템플릿으로 저장한다 (새로 만들기 또는 덮어쓰기)."""
+    run = _get_run(run_id, user)
+    base = None
+    if body.template_id is not None:
+        base = get_template(body.template_id)
+        if base is None:
+            raise HTTPException(404, f"템플릿을 찾을 수 없습니다: {body.template_id}")
+    name = (body.name or "").strip() or (base.name if base else "")
+    if not name:
+        raise HTTPException(400, "새 템플릿 이름을 적어 주세요.")
+    try:
+        # 사진을 복사하기 전에 이름부터 확인한다 (겹치면 복사한 사진이 쓸모없이 남는다)
+        templates.check_name_free(name, exclude_id=base.id if base else None)
+        data = templates.template_data_from_run(run, name, base)
+        if base is None:
+            saved = templates.create_template(data, user.id)
+        else:
+            saved = templates.update_template(base.id, data, user.id)
+            assert saved is not None
+    except TemplateNameTaken as e:
+        raise HTTPException(409, str(e)) from e
+    # 다음에 이 실행으로 "다른 페르소나로"를 만들면 저장한 템플릿을 불러오게 한다
+    if run.input.template_id != saved.id:
+        run.input.template_id = saved.id
+        store.save_run(run)
+    return saved
 
 
 @router.post("", response_model=RunState)

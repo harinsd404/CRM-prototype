@@ -1,6 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
-import type { Mood, PodName, RunInput, RunState, Template, TemplatePod, TemplateSummary } from "../types";
+import {
+  PRODUCT_IMAGE_ROLES,
+  type Mood,
+  type PodName,
+  type RunInput,
+  type RunState,
+  type Template,
+  type TemplatePod,
+  type TemplateSummary,
+} from "../types";
 import PodsField, { podsValid } from "./PodsField";
 import ProductImagesField from "./ProductImagesField";
 
@@ -27,6 +36,12 @@ const EMPTY: Fields = {
 };
 
 const toRows = (template: Template): TemplatePod[] => template.pods.map((pod) => ({ ...pod }));
+
+// 템플릿의 기본 이미지를 입력 형식으로: 모든 자리를 적는다 (템플릿에 없는 자리 = null, assets의 Fold 사진을 쓰지 않게)
+const templateImages = (template: Template) => ({
+  images: Object.fromEntries(PRODUCT_IMAGE_ROLES.map((role) => [role, template.product_images[role] ?? null])),
+  extras: [...template.extra_product_images],
+});
 
 export default function InputForm({ initial, onCreated }: Props) {
   const [fields, setFields] = useState<Fields>(() => (initial ? { ...EMPTY, ...initial } : EMPTY));
@@ -64,6 +79,8 @@ export default function InputForm({ initial, onCreated }: Props) {
         product_name: loaded.product_name,
         colors: loaded.colors,
         used_first_pod: null,
+        product_images: templateImages(loaded).images,
+        extra_product_images: templateImages(loaded).extras,
       }));
       setRows(toRows(loaded));
     } catch (err) {
@@ -184,6 +201,7 @@ export default function InputForm({ initial, onCreated }: Props) {
         onChange={(value) => set("product_images", value)}
         extras={fields.extra_product_images ?? []}
         onExtrasChange={(value) => set("extra_product_images", value)}
+        baseline={template ? templateImages(template) : null}
       />
 
       {error && <p className="text-sm text-danger">{error}</p>}

@@ -120,6 +120,15 @@ export interface RunInput {
   extra_product_images?: string[];
 }
 
+// 공식 제품 사진 자리 (backend/app/core/domain.py PRODUCT_IMAGE_LABELS)
+export const PRODUCT_IMAGE_ROLES = ["closed_front", "closed_back", "closed_views", "unfolded", "color_lineup"];
+
+/** POST /api/product-images/check (backend/app/core/image_check.py) */
+export interface ImageCheck {
+  images: Record<string, { width: number; height: number; warning: string | null }>; // 자리 또는 추가 사진 파일 이름
+  warnings: string[];
+}
+
 // backend/app/core/domain.py MAX_EXTRA_PRODUCT_IMAGES와 맞춘다
 export const MAX_EXTRA_PRODUCT_IMAGES = 5;
 
@@ -153,6 +162,9 @@ export interface Template {
   product_name: string;
   colors: string;
   pods: TemplatePod[];
+  // 기본 이미지. 있는 자리만 적혀 있다 (없는 자리 = 사진 없음). 값은 올린 파일 이름
+  product_images: Record<string, string>;
+  extra_product_images: string[];
   updated_at: string;
   updated_by: string | null;
 }

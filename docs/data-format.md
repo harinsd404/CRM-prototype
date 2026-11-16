@@ -58,6 +58,10 @@
 | `product_images` | `{자리: string \| null}` | – (기본 `{}`) | 공식 제품 사진을 바꾸거나 지운 자리만. 자리 = `closed_front` · `closed_back` · `closed_views` · `unfolded` · `color_lineup`. 없는 자리 = `assets/product`의 기본 사진, `null` = 지움, 문자열 = `POST /api/uploads`가 돌려준 파일 이름. 실행을 만들 때 `data/runs/{run_id}/product/`로 복사해 ③에서 쓴다 |
 | `extra_product_images` | string[] | – (기본 `[]`) | 5자리 외에 더 올린 제품 사진(다른 각도·디테일). `POST /api/uploads`의 파일 이름, **최대 5장** (넘으면 422). `product/extra_1.jpg …`로 복사해 ③에서 ① 사진 뒤에 보조 참조로 보낸다 |
 
+입력 화면에서 템플릿을 고르면 템플릿의 기본 이미지로 `product_images`(모든 자리, 템플릿에 없는 자리는 `null`)와 `extra_product_images`를 채운다.
+`POST /api/product-images/check`는 같은 두 값을 받아 해상도(긴 변 1000px 미만)·필수 자리(접은 앞면·뒷면·펼친 상태)·장 수(4장 미만)를 검사해 경고만 돌려준다 (AI 없이 코드로).
+`POST /api/runs/{id}/template`(`{template_id?, name?}`)은 실행의 제품명·컬러·Pod·제품 사진을 새 템플릿으로 저장하거나 덮어쓴다. 덮어쓸 때 이번 실행에서 쓰지 않은 Pod는 꺼진 채로 남긴다.
+
 ```json
 {
   "target_id": "P1",
@@ -523,7 +527,7 @@ crm-20261027-091857-365eae.zip
 
 | 경로 | 내용 |
 |---|---|
-| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `templates`·`template_pods`(제품 템플릿과 Pod, 모두가 함께 씀. 처음 켤 때 Galaxy Z Fold를 넣는다) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`, 불러온 `template_id`) |
+| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `templates`·`template_pods`·`template_images`(제품 템플릿과 Pod·기본 이미지, 모두가 함께 씀. 처음 켤 때 Galaxy Z Fold와 `assets/product` 사진을 넣는다. 사진 파일은 `data/uploads/`) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`, 불러온 `template_id`) |
 | `backend/data/runs/{run_id}/product/` | 실행을 만들 때 복사한 제품 사진 |
 | `backend/data/runs/{run_id}/images/` | 생성된 이미지 (`.png`, placeholder 모드는 `.svg`) |
 | `backend/data/runs/{run_id}/html_input.json` | 7-1 |

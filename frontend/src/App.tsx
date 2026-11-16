@@ -5,6 +5,7 @@ import HtmlPreview from "./components/HtmlPreview";
 import InputForm from "./components/InputForm";
 import LoginForm from "./components/LoginForm";
 import RunList from "./components/RunList";
+import SaveTemplateDialog from "./components/SaveTemplateDialog";
 import StepPanel from "./components/StepPanel";
 import Stepper from "./components/Stepper";
 import { Spinner } from "./components/icons";
@@ -30,6 +31,8 @@ export default function App() {
   const [run, setRun] = useState<RunState | null>(null);
   const [home, setHome] = useState<Home>({ view: "list" });
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     setUnauthorizedHandler(() => setMe(null));
@@ -75,6 +78,7 @@ export default function App() {
     setRun(null);
     setHome(next);
     setLoadError(null);
+    setNotice(null);
   };
 
   // 진행 상황은 서버에 남아 있어서 내 작업 목록에서 언제든 이어서 만들 수 있다
@@ -170,7 +174,18 @@ export default function App() {
                   ? "완성된 시안을 HTML·이미지·폰트·html_input.json 묶음(ZIP)으로 저장합니다."
                   : "④에서 시안을 조립하면 저장할 수 있습니다. 진행 상황은 자동으로 저장됩니다."}
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {notice && <span className="text-sm text-success">{notice}</span>}
+                <button
+                  onClick={() => {
+                    setNotice(null);
+                    setSavingTemplate(true);
+                  }}
+                  title="제품명·컬러·Pod·제품 사진을 다음에 불러올 수 있게 저장합니다"
+                  className="rounded-lg border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  템플릿으로 저장
+                </button>
                 <button
                   onClick={reset}
                   className="rounded-lg border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -195,6 +210,17 @@ export default function App() {
                 )}
               </div>
             </footer>
+            {savingTemplate && (
+              <SaveTemplateDialog
+                run={run}
+                onClose={() => setSavingTemplate(false)}
+                onSaved={(message) => {
+                  setSavingTemplate(false);
+                  setNotice(message);
+                  api.getRun(run.id).then(setRun, () => null); // 저장한 템플릿 id가 실행 입력에 붙는다
+                }}
+              />
+            )}
           </>
         )}
       </main>

@@ -36,13 +36,41 @@ def product_image_dir(run_id: str) -> Path:
     return folder if folder.is_dir() else settings.product_image_dir
 
 
+def upload_path(name: str) -> Path:
+    """올린 사진(data/uploads/{name})의 경로. 템플릿 사진도 올린 사진과 같은 곳에 둔다."""
+    if not UPLOAD_NAME.match(name) or not (settings.upload_dir / name).exists():
+        raise ValueError(f"올린 제품 사진을 찾을 수 없습니다: {name}")
+    return settings.upload_dir / name
+
+
+def save_as_upload(source: Path) -> str:
+    """파일을 올린 사진 폴더에 새 이름으로 복사하고 그 이름을 돌려준다 (템플릿 사진으로 쓸 때)."""
+    suffix = ".jpg" if source.suffix.lower() == ".jpeg" else source.suffix.lower()
+    name = f"{uuid4().hex}{suffix}"
+    settings.upload_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, settings.upload_dir / name)
+    return name
+
+
+def run_product_images_as_uploads(run_id: str) -> tuple[dict[str, str], list[str]]:
+    """실행에 복사해 둔 제품 사진을 올린 사진으로 다시 복사한다 (실행을 템플릿으로 저장할 때).
+    돌려주는 값은 RunInput.product_images / extra_product_images와 같은 모양."""
+    folder = product_image_dir(run_id)
+    images: dict[str, str] = {}
+    for role in PRODUCT_IMAGE_LABELS:
+        if source := next((folder / f"{role}{s}" for s in IMAGE_SUFFIXES if (folder / f"{role}{s}").exists()), None):
+            images[role] = save_as_upload(source)
+    extras = sorted(
+        (p for p in folder.glob(f"{EXTRA_PREFIX}*") if p.suffix.lower() in IMAGE_SUFFIXES),
+        key=lambda p: int(p.stem.removeprefix(EXTRA_PREFIX)) if p.stem.removeprefix(EXTRA_PREFIX).isdigit() else 0,
+    )
+    return images, [save_as_upload(p) for p in extras]
+
+
 def _copy_product_images(run_input: RunInput, folder: Path) -> None:
     """입력 화면에서 고른 제품 사진(기본·올린 사진·추가 사진)을 실행 폴더로 복사한다. 지운 자리는 복사하지 않는다.
     나중에 기본 사진을 바꾸거나 올린 사진을 지워도 이 실행의 결과는 그대로 다시 만들 수 있다."""
-    def upload(name: str) -> Path:
-        if not UPLOAD_NAME.match(name) or not (settings.upload_dir / name).exists():
-            raise ValueError(f"올린 제품 사진을 찾을 수 없습니다: {name}")
-        return settings.upload_dir / name
+    upload = upload_path
 
     sources: dict[str, Path] = {}
     for role in PRODUCT_IMAGE_LABELS:
@@ -95,6 +123,7 @@ def save_run(run: RunState) -> None:
         row.state = run.model_dump_json()
         row.persona = run.input.persona
         row.product_name = run.input.product_name
+        row.template_id = run.input.template_id
         row.updated_at = run.updated_at
 
 

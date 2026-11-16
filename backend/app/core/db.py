@@ -52,6 +52,9 @@ class Template(Base):
     pods: Mapped[list["TemplatePod"]] = relationship(
         order_by="TemplatePod.position", cascade="all, delete-orphan", lazy="selectin"
     )
+    images: Mapped[list["TemplateImage"]] = relationship(
+        order_by="TemplateImage.position", cascade="all, delete-orphan", lazy="selectin"
+    )
 
 
 class TemplatePod(Base):
@@ -68,6 +71,19 @@ class TemplatePod(Base):
     spec: Mapped[str] = mapped_column(Text, default="")
     visual: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(default=True)
+
+
+class TemplateImage(Base):
+    """템플릿의 기본 이미지 (이미지 생성에 쓰는 공식 제품 사진). 파일은 data/uploads/{file}에 있다.
+    role = 사진 자리(closed_front 등) 또는 'extra'(추가 사진, position 순서)."""
+
+    __tablename__ = "template_images"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("templates.id", ondelete="CASCADE"), index=True)
+    role: Mapped[str] = mapped_column(String(30))
+    file: Mapped[str] = mapped_column(String(64))
+    position: Mapped[int] = mapped_column(default=0)
 
 
 class Run(Base):

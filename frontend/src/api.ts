@@ -1,4 +1,5 @@
 import type {
+  ImageCheck,
   Me,
   ProductImage,
   RunInput,
@@ -59,6 +60,17 @@ export const api = {
   // 제품 템플릿 (모두가 함께 쓴다)
   listTemplates: () => request<TemplateSummary[]>("/templates"),
   getTemplate: (id: number) => request<Template>(`/templates/${id}`),
+
+  // 실행의 제품명·컬러·Pod·제품 사진을 템플릿으로 저장. template_id를 주면 덮어쓴다
+  saveRunAsTemplate: (runId: string, body: { template_id: number | null; name: string | null }) =>
+    request<Template>(`/runs/${runId}/template`, { method: "POST", body: JSON.stringify(body) }),
+
+  // 고른 제품 사진의 해상도·장 수·필수 자리 검사 (경고만)
+  checkProductImages: (product_images: RunInput["product_images"], extra_product_images: string[]) =>
+    request<ImageCheck>("/product-images/check", {
+      method: "POST",
+      body: JSON.stringify({ product_images, extra_product_images }),
+    }),
 
   // 입력 화면의 공식 제품 사진 5자리와 기본 사진
   getProductImages: () => request<ProductImage[]>("/product-images"),

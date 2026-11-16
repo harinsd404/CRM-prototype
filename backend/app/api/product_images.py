@@ -5,7 +5,8 @@ from pydantic import BaseModel
 
 from app.api.auth import current_user
 from app.config import settings
-from app.core.domain import PRODUCT_IMAGE_LABELS
+from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES, PRODUCT_IMAGE_LABELS
+from app.core.image_check import ImageCheck, check_product_images
 from app.core.store import default_product_image
 
 router = APIRouter(tags=["product-images"], dependencies=[Depends(current_user)])
@@ -36,6 +37,17 @@ def list_product_images() -> list[ProductImage]:
         )
         for role, label in PRODUCT_IMAGE_LABELS.items()
     ]
+
+
+class CheckRequest(BaseModel):
+    product_images: dict[str, str | None] = {}
+    extra_product_images: list[str] = []
+
+
+@router.post("/product-images/check", response_model=ImageCheck)
+def check(body: CheckRequest) -> ImageCheck:
+    """입력 화면에서 고른 제품 사진의 해상도·장 수·필수 자리를 검사한다 (경고만, 막지는 않는다)."""
+    return check_product_images(body.product_images, body.extra_product_images[:MAX_EXTRA_PRODUCT_IMAGES])
 
 
 @router.post("/uploads", response_model=Upload)

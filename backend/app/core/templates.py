@@ -5,10 +5,13 @@ from datetime import datetime
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 
-from app.core.db import Template, TemplatePod, User, session_scope
-from app.core.domain import MAX_PODS
+from app.core.db import Template, TemplateImage, TemplatePod, User, session_scope
+from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES, MAX_PODS, PRODUCT_IMAGE_LABELS
 from app.core.seed import FOLD_TEMPLATE
-from app.core.state import PodInput
+from app.core.state import PodInput, RunState
+from app.core.store import default_product_image, run_product_images_as_uploads, save_as_upload, upload_path
+
+EXTRA_ROLE = "extra"
 
 
 class TemplatePodData(PodInput):
@@ -22,10 +25,17 @@ class TemplateData(BaseModel):
     product_name: str = Field(min_length=1, max_length=200)
     colors: str = ""
     pods: list[TemplatePodData] = Field(min_length=1, max_length=MAX_PODS)
+    # 기본 이미지. RunInput과 같은 이름이지만 여기서는 '있는 자리만' 적는다 (없는 자리 = 사진 없음)
+    product_images: dict[str, str] = Field(default={}, description="사진 자리 → 올린 파일 이름")
+    extra_product_images: list[str] = Field(default=[], max_length=MAX_EXTRA_PRODUCT_IMAGES)
 
     @model_validator(mode="after")
     def _check(self) -> "TemplateData":
         self.name = self.name.strip()
+        if unknown := set(self.product_images) - set(PRODUCT_IMAGE_LABELS):
+            raise ValueError(f"알 수 없는 사진 자리: {', '.join(sorted(unknown))}")
+        for name in [*self.product_images.values(), *self.extra_product_images]:
+            upload_path(name)  # 없는 파일이면 ValueError
         names = [pod.name for pod in self.pods]
         if len(set(names)) < len(names):
             raise ValueError("Pod 이름이 겹칩니다.")
@@ -73,6 +83,8 @@ def _to_out(template: Template, usernames: dict[int, str]) -> TemplateOut:
             TemplatePodData(name=p.name, key=p.key, spec=p.spec, visual=p.visual, enabled=p.enabled)
             for p in template.pods
         ],
+        product_images={i.role: i.file for i in template.images if i.role != EXTRA_ROLE},
+        extra_product_images=[i.file for i in template.images if i.role == EXTRA_ROLE],
         updated_at=template.updated_at,
         updated_by=usernames.get(template.updated_by) if template.updated_by else None,
     )
@@ -112,6 +124,15 @@ def _apply(template: Template, data: TemplateData) -> None:
         TemplatePod(position=i, name=p.name, key=p.key, spec=p.spec, visual=p.visual, enabled=p.enabled)
         for i, p in enumerate(data.pods)
     ]
+    template.images = [TemplateImage(role=role, file=file) for role, file in data.product_images.items()] + [
+        TemplateImage(role=EXTRA_ROLE, file=file, position=i) for i, file in enumerate(data.extra_product_images)
+    ]
+
+
+def check_name_free(name: str, exclude_id: int | None = None) -> None:
+    """같은 이름의 다른 템플릿이 있으면 TemplateNameTaken."""
+    with session_scope() as db:
+        _check_name(db, name.strip(), exclude_id)
 
 
 def _check_name(db, name: str, exclude_id: int | None = None) -> None:
@@ -140,6 +161,7 @@ def update_template(template_id: int, data: TemplateData, user_id: int) -> Templ
             return None
         _check_name(db, data.name, exclude_id=template_id)
         template.pods.clear()
+        template.images.clear()
         db.flush()  # 같은 Pod 이름으로 다시 넣을 때 (template_id, name) 고유 제약에 걸리지 않게 먼저 지운다
         _apply(template, data)
         template.updated_by = user_id
@@ -148,9 +170,36 @@ def update_template(template_id: int, data: TemplateData, user_id: int) -> Templ
         return _to_out(template, _usernames(db, {user_id}))
 
 
+def _default_images() -> dict[str, str]:
+    """assets/product의 기본 사진을 올린 사진 폴더로 복사한다."""
+    return {role: save_as_upload(path) for role in PRODUCT_IMAGE_LABELS if (path := default_product_image(role))}
+
+
 def seed_templates() -> None:
-    """템플릿이 하나도 없으면 Galaxy Z Fold 기본 템플릿을 넣는다."""
+    """템플릿이 하나도 없으면 Galaxy Z Fold 기본 템플릿을 넣는다 (기본 이미지 = assets/product 사진).
+    이미지 기능 전에 만든 Fold 템플릿에 사진이 하나도 없으면 사진만 채운다."""
     with session_scope() as db:
         if db.scalar(select(func.count()).select_from(Template)):
+            fold = db.scalar(select(Template).where(Template.name == FOLD_TEMPLATE["name"]))
+            if fold is not None and not fold.images:
+                fold.images = [TemplateImage(role=role, file=file) for role, file in _default_images().items()]
             return
-    create_template(TemplateData.model_validate(FOLD_TEMPLATE), None)
+    create_template(TemplateData.model_validate({**FOLD_TEMPLATE, "product_images": _default_images()}), None)
+
+
+def template_data_from_run(run: RunState, name: str, base: TemplateOut | None) -> TemplateData:
+    """실행의 제품 정보·Pod·제품 사진으로 템플릿 내용을 만든다.
+    덮어쓸 템플릿(base)에 있는데 이번 실행에서 끈 Pod는 지우지 않고 꺼진 채로 뒤에 남긴다."""
+    pods = [TemplatePodData(**pod.model_dump(), enabled=True) for pod in run.input.pods]
+    if base is not None:
+        used = set(run.input.pod_names)
+        pods += [pod.model_copy(update={"enabled": False}) for pod in base.pods if pod.name not in used]
+    images, extras = run_product_images_as_uploads(run.id)
+    return TemplateData(
+        name=name,
+        product_name=run.input.product_name,
+        colors=run.input.colors,
+        pods=pods[:MAX_PODS],
+        product_images=images,
+        extra_product_images=extras[:MAX_EXTRA_PRODUCT_IMAGES],
+    )
