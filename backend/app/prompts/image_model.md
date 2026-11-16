@@ -21,7 +21,8 @@ If no product image is attached, output only: "Attach the product reference imag
    No collage, split panels, borders, bars, or blank bands.
 2. Exactly one device in the image. No second device, no mirror copy.
 3. Add no text anywhere: no captions, labels, letters, numbers, logos, or watermarks.
-   Only markings physically printed on the device itself (as in the product images) may appear.
+   Exception: markings clearly visible on the device in the product images may stay as they are there.
+   Never invent new markings, brand text, or model numbers on the device or strap.
 4. The canvas ratio is not the device ratio. Fill the canvas with the scene; the device keeps its own proportion.
 5. Shoot the device squarely with a telephoto look (85 mm): no wide-angle distortion, no steep angle,
    vertical edges within 5° of vertical. A device lying flat is shot from directly above.

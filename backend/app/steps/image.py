@@ -182,7 +182,8 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
     끝에 이 안의 연출안(Input Data)을 붙인다."""
     profile = run.input.product_profile
     state = profile.state(brief.state)
-    has_person = brief.person_hand not in ("", "없음")
+    # 손 블록은 이미지 유형으로 정한다 (person_hand 문구는 "없음(제품만)"처럼 흔들려서 판정에 쓰지 않음)
+    has_person = brief.image_type in ("Hand-held", "인물 포함")
     shows_screen = state.shows_screen and bool(profile.screen_rules.strip())
     common = _model_sections()
     blocks = [
