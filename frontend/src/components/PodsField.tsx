@@ -9,6 +9,11 @@ interface Props {
 const inputClass = "rounded-lg border bg-white p-2 text-sm";
 const fieldClass = `w-full ${inputClass}`;
 
+/** 글자 수 표시 (공백 제외). */
+function charCount(text: string): string {
+  return `${[...text.replace(/\s/g, "")].length.toLocaleString()}자`;
+}
+
 /** 이번 시안에 쓸 Pod 목록. 위에서부터 기본 순서이고, 켜고 끄기·이름과 스펙 고치기·추가·삭제·순서 바꾸기를 할 수 있다. */
 export default function PodsField({ rows, onChange, onReset }: Props) {
   const update = (i: number, patch: Partial<TemplatePod>) =>
@@ -91,13 +96,16 @@ export default function PodsField({ rows, onChange, onReset }: Props) {
               </button>
             </div>
           </div>
-          <textarea
-            value={row.spec}
-            onChange={(e) => update(i, { spec: e.target.value })}
-            rows={2}
-            placeholder="스펙(Fact) — 카피는 여기 적힌 내용만 근거로 씁니다"
-            className={fieldClass}
-          />
+          <div>
+            <textarea
+              value={row.spec}
+              onChange={(e) => update(i, { spec: e.target.value })}
+              rows={2}
+              placeholder="스펙(Fact) — 카피는 여기 적힌 내용만 근거로 씁니다"
+              className={`${fieldClass} block`}
+            />
+            <p className="mt-0.5 text-right text-[11px] text-gray-400">{charCount(row.spec)}</p>
+          </div>
           <input
             value={row.visual}
             onChange={(e) => update(i, { visual: e.target.value })}
