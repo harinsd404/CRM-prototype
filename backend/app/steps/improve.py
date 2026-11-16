@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 
 from pydantic import BaseModel, Field
 
@@ -54,7 +55,8 @@ def _check(current: ProductProfile, draft: ProposalDraft, ids: set[int]) -> None
     if not changed:
         raise ValueError("바뀐 곳이 없습니다.")
     # 설명과 실제가 다르면(바꿨다고 했는데 그대로) 다시 생성한다. 설명 없이 바뀐 항목은 설명에 덧붙인다 (실측: 가끔 빠뜨림)
-    claimed = {c.field.split(".")[0] for c in draft.changes}
+    # 모델이 "states[0].rules", "photo_slots.caption"처럼 적어도 최상위 항목 이름만 본다
+    claimed = {m.group(0) for c in draft.changes if (m := re.match(r"[A-Za-z_]+", c.field.strip()))}
     if missing := claimed - changed:
         raise ValueError(f"바꿨다고 했지만 그대로인 항목: {', '.join(sorted(missing))}")
     draft.changes += [ProfileChange(field=key, summary="(설명 없이 바뀜)") for key in sorted(changed - claimed)]

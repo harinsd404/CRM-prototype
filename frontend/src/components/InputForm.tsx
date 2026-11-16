@@ -37,6 +37,7 @@ const EMPTY: Fields = {
   product_images: {},
   extra_product_images: [],
   profile: null,
+  profile_version: null,
 };
 
 const toRows = (template: Template): TemplatePod[] => template.pods.map((pod) => ({ ...pod }));
@@ -92,7 +93,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
     setError(null);
     if (id === null) {
       setTemplate(null);
-      setFields((prev) => ({ ...prev, template_id: null }));
+      setFields((prev) => ({ ...prev, template_id: null, profile_version: null }));
       return;
     }
     try {
@@ -110,6 +111,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
         product_images: base.images,
         extra_product_images: base.extras,
         profile: loaded.profile,
+        profile_version: loaded.profile_version,
       }));
       setRows(toRows(loaded));
     } catch (err) {
@@ -274,6 +276,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
         onExtrasChange={(value) => set("extra_product_images", value)}
         baseline={baseline}
         profile={fields.profile ?? null}
+        foldPhotos={!fields.profile || fields.profile.device_noun.trim() === defaultProfile?.device_noun}
       />
 
       {error && <p className="text-sm text-danger">{error}</p>}

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { PhotoSlot, ProductProfile, ProductState } from "../types";
 
 interface Props {
@@ -17,6 +17,25 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {hint && <span className="ml-2 text-[11px] text-gray-400">{hint}</span>}
       {children}
     </label>
+  );
+}
+
+const parseKeys = (text: string) => text.split(",").map((p) => p.trim()).filter(Boolean);
+
+/** 쉼표로 적는 key 목록. 치는 글자는 그대로 두고(쉼표·빈칸을 바로 지우지 않게) 나눈 값만 위로 올린다. */
+function KeyListInput({ value, onChange }: { value: string[]; onChange: (value: string[]) => void }) {
+  const [text, setText] = useState(value.join(", "));
+  // 바깥에서 값이 바뀌면(되돌리기 등) 다시 채운다
+  if (parseKeys(text).join(",") !== value.join(",")) setText(value.join(", "));
+  return (
+    <input
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(parseKeys(e.target.value));
+      }}
+      className={inputClass}
+    />
   );
 }
 
@@ -149,13 +168,7 @@ export default function ProfileEditor({ value, onChange, lockSlots = false }: Pr
                 </select>
               </Field>
               <Field label="참조 사진 자리 (photos)" hint="쉼표로, 첫 번째가 주 참조">
-                <input
-                  value={state.photos.join(", ")}
-                  onChange={(e) =>
-                    setState(i, { photos: e.target.value.split(",").map((p) => p.trim()).filter(Boolean) })
-                  }
-                  className={inputClass}
-                />
+                <KeyListInput value={state.photos} onChange={(photos) => setState(i, { photos })} />
               </Field>
             </div>
           </div>

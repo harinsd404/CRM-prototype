@@ -14,6 +14,8 @@ interface Props {
   baseline?: { images: Choices; extras: string[]; label: string } | null;
   // 사진 자리를 정하는 제품 프로필. null이면 Fold 기본 자리
   profile: ProductProfile | null;
+  // 적지 않은 자리에 assets 기본 사진(Fold 공식 사진)을 쓰는지. Fold 프로필일 때만 (서버 uses_fold_photos와 같은 규칙)
+  foldPhotos: boolean;
 }
 
 const ACCEPT = "image/png,image/jpeg,image/webp";
@@ -21,7 +23,7 @@ const EXTRA = "extra"; // 추가 사진을 올리는 중일 때 uploading 값
 
 /** ③ 이미지 생성 때 이미지 모델에 함께 보내는 공식 제품 사진(기본 이미지). 자리는 제품 프로필이 정한다. 자리마다 다른 사진을 올리거나 지울 수 있고,
  * 다른 각도·디테일 사진을 MAX_EXTRA_PRODUCT_IMAGES장까지 더 올릴 수 있다. 고를 때마다 서버가 해상도·장 수를 검사한다. */
-export default function ProductImagesField({ value, onChange, extras, onExtrasChange, baseline = null, profile }: Props) {
+export default function ProductImagesField({ value, onChange, extras, onExtrasChange, baseline = null, profile, foldPhotos }: Props) {
   const [foldSlots, setFoldSlots] = useState<ProductImage[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,8 +45,10 @@ export default function ProductImagesField({ value, onChange, extras, onExtrasCh
     };
   }, [value, extras, profile]);
 
-  // 적지 않은 자리는 assets/product 기본 사진을 쓴다 (Fold 자리 이름일 때만 있음)
-  const defaults = Object.fromEntries(foldSlots.map((slot) => [slot.role, slot.default_url]));
+  // 적지 않은 자리는 assets/product 기본 사진을 쓴다 (Fold 프로필일 때만)
+  const defaults: Record<string, string | null> = foldPhotos
+    ? Object.fromEntries(foldSlots.map((slot) => [slot.role, slot.default_url]))
+    : {};
   const slots: ProductImage[] = profile
     ? profile.photo_slots.map((slot) => ({ role: slot.key, label: slot.label, default_url: defaults[slot.key] ?? null }))
     : foldSlots;

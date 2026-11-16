@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import func, select
 
-from app.core.db import ProfileVersion, Template, TemplateImage, TemplatePod, User, session_scope
+from app.core.db import Feedback, ProfileVersion, Template, TemplateImage, TemplatePod, User, session_scope
 from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES, MAX_PODS
 from app.core.profile import FOLD_PROFILE, ProductProfile
 from app.core.seed import FOLD_TEMPLATE
@@ -50,6 +50,7 @@ class TemplateData(BaseModel):
 
 class TemplateOut(TemplateData):
     id: int
+    profile_version: int | None  # 지금 쓰는 프로필 버전 (고칠 때 그 사이 바뀌었는지 보는 기준)
     updated_at: datetime
     updated_by: str | None  # 마지막으로 고친 사람 아이디
 
@@ -67,6 +68,10 @@ class TemplateNameTaken(ValueError):
     pass
 
 
+class ProfileConflict(ValueError):
+    """그 사이 다른 사람이 프로필을 바꿨다 (API는 409)."""
+
+
 def _usernames(db, ids: set[int | None]) -> dict[int, str]:
     ids = {i for i in ids if i is not None}
     if not ids:
@@ -80,14 +85,16 @@ def active_profile(db, template_id: int) -> ProfileVersion | None:
     )
 
 
-def _set_profile(db, template_id: int, profile: ProductProfile | None, user_id: int | None, source: str, note: str = "") -> None:
-    """프로필이 바뀌었으면 새 버전을 active로 넣고 이전 것은 archived로 남긴다."""
+def _set_profile(
+    db, template_id: int, profile: ProductProfile | None, user_id: int | None, source: str, note: str = ""
+) -> int | None:
+    """프로필이 바뀌었으면 새 버전을 active로 넣고 이전 것은 archived로 남긴다. 만든 버전 번호 (안 바뀌었으면 None)."""
     if profile is None:
-        return
+        return None
     current = active_profile(db, template_id)
     content = profile.model_dump_json()
     if current is not None and ProductProfile.model_validate_json(current.profile) == profile:
-        return
+        return None
     last = db.scalar(select(func.max(ProfileVersion.version)).where(ProfileVersion.template_id == template_id)) or 0
     if current is not None:
         current.status = "archived"
@@ -97,6 +104,16 @@ def _set_profile(db, template_id: int, profile: ProductProfile | None, user_id: 
             source=source, note=note, created_by=user_id,
         )
     )
+    return last + 1
+
+
+def check_base_version(db, template_id: int, base_version: int | None, what: str) -> None:
+    """base_version(고치기 시작할 때의 버전) 뒤로 다른 사람이 프로필을 바꿨으면 ProfileConflict."""
+    current = active_profile(db, template_id)
+    if base_version is not None and current is not None and current.version != base_version:
+        raise ProfileConflict(
+            f"{what} 뒤에 다른 사람이 이 템플릿의 제품 규칙을 바꿨습니다 (v{base_version} → v{current.version})."
+        )
 
 
 def _to_out(template: Template, usernames: dict[int, str], db) -> TemplateOut:
@@ -114,6 +131,7 @@ def _to_out(template: Template, usernames: dict[int, str], db) -> TemplateOut:
         product_images={i.role: i.file for i in template.images if i.role != EXTRA_ROLE},
         extra_product_images=[i.file for i in template.images if i.role == EXTRA_ROLE],
         profile=profile,
+        profile_version=version.version if version else None,
         updated_at=template.updated_at,
         updated_by=usernames.get(template.updated_by) if template.updated_by else None,
     )
@@ -186,13 +204,18 @@ def create_template(data: TemplateData, user_id: int | None, source: str = "manu
         return _to_out(template, _usernames(db, {user_id}), db)
 
 
-def update_template(template_id: int, data: TemplateData, user_id: int, source: str = "manual") -> TemplateOut | None:
-    """템플릿 내용을 통째로 바꾼다. 이 템플릿으로 만든 예전 실행은 실행에 복사해 둔 입력을 쓰므로 바뀌지 않는다."""
+def update_template(
+    template_id: int, data: TemplateData, user_id: int, source: str = "manual", base_version: int | None = None
+) -> TemplateOut | None:
+    """템플릿 내용을 통째로 바꾼다. 이 템플릿으로 만든 예전 실행은 실행에 복사해 둔 입력을 쓰므로 바뀌지 않는다.
+    base_version을 주면 그 뒤로 프로필이 바뀌었을 때 ProfileConflict (data.profile이 None이면 프로필은 건드리지 않는다)."""
     with session_scope() as db:
         template = db.get(Template, template_id)
         if template is None:
             return None
         _check_name(db, data.name, exclude_id=template_id)
+        if data.profile is not None:
+            check_base_version(db, template_id, base_version, "이 실행을 시작한")
         template.pods.clear()
         template.images.clear()
         db.flush()  # 같은 Pod 이름으로 다시 넣을 때 (template_id, name) 고유 제약에 걸리지 않게 먼저 지운다
@@ -255,9 +278,36 @@ class ProfileVersionOut(BaseModel):
     source: str
     note: str
     feedback_ids: list[int]
+    base_version: int | None  # 개선안: 만들 때 쓰던 버전
     created_by: str | None
     created_at: datetime
     profile: ProductProfile
+
+
+def _feedback_ids(v: ProfileVersion) -> list[int]:
+    return [int(i) for i in v.feedback_ids.split(",") if i]
+
+
+def _version_out(v: ProfileVersion, usernames: dict[int, str]) -> ProfileVersionOut:
+    return ProfileVersionOut(
+        version=v.version,
+        status=v.status,
+        source=v.source,
+        note=v.note,
+        feedback_ids=_feedback_ids(v),
+        base_version=v.base_version,
+        created_by=usernames.get(v.created_by) if v.created_by else None,
+        created_at=v.created_at,
+        profile=ProductProfile.model_validate_json(v.profile),
+    )
+
+
+def profile_at(template_id: int, version: int) -> ProductProfile | None:
+    with session_scope() as db:
+        content = db.scalar(
+            select(ProfileVersion.profile).where(ProfileVersion.template_id == template_id, ProfileVersion.version == version)
+        )
+        return ProductProfile.model_validate_json(content) if content else None
 
 
 def list_profile_versions(template_id: int) -> list[ProfileVersionOut]:
@@ -267,31 +317,24 @@ def list_profile_versions(template_id: int) -> list[ProfileVersionOut]:
             select(ProfileVersion).where(ProfileVersion.template_id == template_id).order_by(ProfileVersion.version.desc())
         ).all()
         usernames = _usernames(db, {v.created_by for v in versions})
-        return [
-            ProfileVersionOut(
-                version=v.version,
-                status=v.status,
-                source=v.source,
-                note=v.note,
-                feedback_ids=[int(i) for i in v.feedback_ids.split(",") if i],
-                created_by=usernames.get(v.created_by) if v.created_by else None,
-                created_at=v.created_at,
-                profile=ProductProfile.model_validate_json(v.profile),
-            )
-            for v in versions
-        ]
+        return [_version_out(v, usernames) for v in versions]
 
 
-def save_profile(template_id: int, profile: ProductProfile, user_id: int, note: str, source: str = "manual") -> bool:
-    """고급 모드에서 고친 프로필을 새 active 버전으로. 템플릿이 없으면 False."""
+def save_profile(
+    template_id: int, profile: ProductProfile, user_id: int, note: str, base_version: int | None, source: str = "manual"
+) -> int | None:
+    """고급 모드에서 고친 프로필을 새 active 버전으로. 만든 버전 번호, 지금 버전과 같아 만들지 않았으면 None.
+    base_version(편집을 시작할 때의 버전) 뒤로 다른 사람이 바꿨으면 ProfileConflict."""
     with session_scope() as db:
         template = db.get(Template, template_id)
         if template is None:
-            return False
+            raise LookupError(template_id)
+        check_base_version(db, template_id, base_version, "고치기 시작한")
         _check_slots_kept(db, template, profile)
-        _set_profile(db, template_id, profile, user_id, source, note)
-        template.updated_by, template.updated_at = user_id, datetime.now()
-        return True
+        created = _set_profile(db, template_id, profile, user_id, source, note)
+        if created is not None:
+            template.updated_by, template.updated_at = user_id, datetime.now()
+        return created
 
 
 def _check_slots_kept(db, template: Template, profile: ProductProfile) -> None:
@@ -301,25 +344,31 @@ def _check_slots_kept(db, template: Template, profile: ProductProfile) -> None:
         raise ValueError(f"사진이 있는 자리를 지울 수 없습니다: {', '.join(missing)} (먼저 템플릿 사진을 바꿔 주세요)")
 
 
-def add_proposal(template_id: int, profile: ProductProfile, user_id: int, note: str, feedback_ids: list[int]) -> int:
-    """AI 개선안을 proposed 버전으로 넣는다 (승인 전까지 쓰이지 않는다). 예전 개선안은 rejected로 정리한다."""
+def add_proposal(
+    template_id: int, profile: ProductProfile, user_id: int, note: str, feedback_ids: list[int], base_version: int | None
+) -> ProfileVersionOut:
+    """AI 개선안을 proposed 버전으로 넣는다 (승인 전까지 쓰이지 않는다). 예전 개선안은 rejected로 정리한다.
+    base_version: 개선안을 만들 때 읽은 active 버전."""
     with session_scope() as db:
         for old in db.scalars(
             select(ProfileVersion).where(ProfileVersion.template_id == template_id, ProfileVersion.status == "proposed")
         ):
             old.status = "rejected"
         last = db.scalar(select(func.max(ProfileVersion.version)).where(ProfileVersion.template_id == template_id)) or 0
-        db.add(
-            ProfileVersion(
-                template_id=template_id, version=last + 1, profile=profile.model_dump_json(), status="proposed",
-                source="feedback", note=note, feedback_ids=",".join(map(str, feedback_ids)), created_by=user_id,
-            )
+        proposal = ProfileVersion(
+            template_id=template_id, version=last + 1, profile=profile.model_dump_json(), status="proposed",
+            source="feedback", note=note, feedback_ids=",".join(map(str, feedback_ids)), created_by=user_id,
+            base_version=base_version,
         )
-        return last + 1
+        db.add(proposal)
+        db.flush()
+        return _version_out(proposal, _usernames(db, {user_id}))
 
 
 def activate_version(template_id: int, version: int, user_id: int) -> ProfileVersionOut | None:
-    """예전 버전으로 되돌리거나(archived) 개선안을 승인한다(proposed). 지금 active는 archived가 된다."""
+    """예전 버전으로 되돌리거나(archived) 개선안을 승인한다(proposed). 지금 active는 archived가 된다.
+    개선안은 만든 뒤 다른 버전이 쓰이게 됐으면 ProfileConflict (승인하면 그 사이 바꾼 내용이 사라지므로).
+    개선안을 승인하면 반영한 피드백을 같은 트랜잭션에서 '반영함'으로 바꾼다."""
     with session_scope() as db:
         target = db.scalar(
             select(ProfileVersion).where(ProfileVersion.template_id == template_id, ProfileVersion.version == version)
@@ -327,12 +376,19 @@ def activate_version(template_id: int, version: int, user_id: int) -> ProfileVer
         template = db.get(Template, template_id)
         if target is None or template is None or target.status in ("active", "rejected"):
             return None
+        approving = target.status == "proposed"
+        if approving:
+            check_base_version(db, template_id, target.base_version, "개선안을 만든")
         _check_slots_kept(db, template, ProductProfile.model_validate_json(target.profile))
         if current := active_profile(db, template_id):
             current.status = "archived"
         target.status = "active"
+        if approving and (ids := _feedback_ids(target)):
+            for item in db.scalars(select(Feedback).where(Feedback.id.in_(ids))):
+                item.status = "applied"
         template.updated_by, template.updated_at = user_id, datetime.now()
-    return next(v for v in list_profile_versions(template_id) if v.version == version)
+        db.flush()
+        return _version_out(target, _usernames(db, {target.created_by}))
 
 
 def reject_version(template_id: int, version: int) -> bool:

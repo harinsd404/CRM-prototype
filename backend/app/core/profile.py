@@ -217,3 +217,10 @@ LEGACY_STATES = {
     "fully closed back": "closed_back",
     "fully unfolded": "unfolded",
 }
+
+
+def uses_fold_photos(profile: ProductProfile | None) -> bool:
+    """assets/product 기본 사진(Galaxy Z Fold 공식 사진)을 '적지 않은 자리'에 써도 되는 프로필인지.
+    Fold 프로필(None = 기본, 또는 기기 이름이 Fold와 같은 프로필 = Fold 템플릿을 고친 것)만 쓴다.
+    다른 제품이 우연히 같은 자리 key(unfolded 등)를 쓰더라도 Fold 사진이 들어가지 않게 하려는 것."""
+    return profile is None or profile.device_noun.strip() == FOLD_PROFILE.device_noun

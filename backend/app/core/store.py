@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core.db import Run, session_scope
+from app.core.profile import uses_fold_photos
 from app.core.state import RunInput, RunState
 
 _RUN_ID = re.compile(r"^[\w-]+$")
@@ -72,14 +73,15 @@ def _copy_product_images(run_input: RunInput, folder: Path) -> None:
     upload = upload_path
 
     sources: dict[str, Path] = {}
+    fold_photos = uses_fold_photos(run_input.profile)
     for role in run_input.product_profile.slot_labels():
-        # 적지 않은 자리 = assets/product 기본 사진 (Fold 자리 이름일 때만 있음). 템플릿·AI 생성은 모든 자리를 적는다
+        # 적지 않은 자리 = assets/product 기본 사진 (Fold 프로필일 때만). 템플릿·AI 생성은 모든 자리를 적는다
         choice = run_input.product_images.get(role, "")
         if choice is None:
             continue
         if choice:
             sources[role] = upload(choice)
-        elif default := default_product_image(role):
+        elif fold_photos and (default := default_product_image(role)):
             sources[role] = default
     for i, name in enumerate(run_input.extra_product_images, start=1):
         sources[f"{EXTRA_PREFIX}{i}"] = upload(name)

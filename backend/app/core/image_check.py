@@ -51,9 +51,9 @@ def _info(path: Path, label: str, warnings: list[str]) -> ImageInfo | None:
 
 
 def check_product_images(
-    product_images: dict[str, str | None], extras: list[str], profile: ProductProfile
+    product_images: dict[str, str | None], extras: list[str], profile: ProductProfile, fold_photos: bool
 ) -> ImageCheck:
-    """product_images는 RunInput과 같은 뜻: 없는 자리 = assets/product 기본 사진(Fold 자리 이름일 때만 있음), None = 지움,
+    """product_images는 RunInput과 같은 뜻: 없는 자리 = assets/product 기본 사진(fold_photos일 때만), None = 지움,
     문자열 = 올린 파일. 필수 자리는 제품 프로필에서 상태의 주 참조로 쓰이는 자리다."""
     images: dict[str, ImageInfo] = {}
     warnings: list[str] = []
@@ -66,7 +66,7 @@ def check_product_images(
                 path = upload_path(choice)
             except ValueError:
                 warnings.append(f"{label}: 올린 사진을 찾을 수 없습니다.")
-        elif choice is not None:
+        elif choice is not None and fold_photos:
             path = default_product_image(role)
         if path is None:
             if role in required:

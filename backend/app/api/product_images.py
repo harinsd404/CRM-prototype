@@ -7,7 +7,7 @@ from app.api.auth import current_user
 from app.config import settings
 from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES
 from app.core.image_check import ImageCheck, check_product_images
-from app.core.profile import FOLD_PROFILE, ProductProfile
+from app.core.profile import FOLD_PROFILE, ProductProfile, uses_fold_photos
 from app.core.store import default_product_image
 
 router = APIRouter(tags=["product-images"], dependencies=[Depends(current_user)])
@@ -53,6 +53,7 @@ def check(body: CheckRequest) -> ImageCheck:
         body.product_images,
         body.extra_product_images[:MAX_EXTRA_PRODUCT_IMAGES],
         body.profile or FOLD_PROFILE,
+        uses_fold_photos(body.profile),
     )
 
 

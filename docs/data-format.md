@@ -597,9 +597,17 @@ Pod별 기본 연출(`pod_visuals`)과 사진이 부족하거나 흐린 점(`war
 | API | 하는 일 |
 |---|---|
 | `GET /api/templates/{id}/profile/versions` | 버전 목록 (최근 것부터). status: active 사용 중 / archived 예전 / proposed 개선안 / rejected 거절 |
-| `PUT /api/templates/{id}/profile` (`{profile, note}`) | 직접 고친 프로필을 새 active 버전으로 (source=manual). 템플릿 사진이 있는 자리를 지우면 400 |
+| `PUT /api/templates/{id}/profile` (`{profile, note, base_version}`) | 직접 고친 프로필을 새 active 버전으로 (source=manual). 결과 `{version}`: 정리 후 지금 버전과 같으면 null(만들지 않음). 템플릿 사진이 있는 자리를 지우면 400, `base_version` 뒤로 다른 사람이 바꿨으면 409 |
 | `POST /api/templates/{id}/profile/propose` | 이 템플릿의 확인 전 피드백(최근 60건)과 지금 프로필을 Vertex Gemini에 보내 개선안(proposed)을 만든다. 사진 자리 key는 못 바꾸고, 바꿨다고 한 항목이 그대로면 다시 생성한다. 프로필로 고칠 수 없는 피드백은 note에 "개발자 확인"으로 남는다 |
-| `POST /api/templates/{id}/profile/versions/{v}/activate` | 개선안 승인 또는 예전 버전으로 되돌리기. 개선안을 승인하면 반영한 피드백을 `applied`로 바꾼다 |
+| `POST /api/templates/{id}/profile/versions/{v}/activate` | 개선안 승인 또는 예전 버전으로 되돌리기. 개선안을 승인하면 같은 트랜잭션에서 반영한 피드백을 `applied`로 바꾼다. 개선안을 만든 뒤(`base_version`) 다른 버전이 쓰이게 됐으면 409 (다시 만들어야 함) |
 | `POST /api/templates/{id}/profile/versions/{v}/reject` | 개선안 거절 |
 
 입력 화면에서도 고급 모드면 **제품 규칙 → 이번 실행만 고치기**로 그 실행에만 쓰는 프로필을 고칠 수 있다 (템플릿에 남기려면 실행에서 템플릿으로 저장).
+
+**동시에 고칠 때**: 템플릿은 모두가 함께 쓰므로 버전 번호로 충돌을 막는다.
+- `GET /api/templates/{id}`의 `profile_version` = 지금 쓰는 버전. 템플릿을 적용한 실행은 `RunInput.profile_version`에 그 번호를 남긴다.
+- 실행을 그 템플릿에 덮어쓸 때 그 사이 규칙이 바뀌었으면: 실행에서 규칙을 고치지 않았으면 템플릿의 새 규칙을 그대로 두고(나머지만 저장),
+  고쳤으면 409 (새 템플릿으로 저장해야 함).
+
+**assets/product 기본 사진**은 Fold 프로필(없음, 또는 `device_noun`이 Fold와 같은 프로필)에서만 '적지 않은 자리'에 쓴다 (`uses_fold_photos`).
+다른 제품이 우연히 같은 자리 key를 써도 Fold 사진이 들어가지 않는다.

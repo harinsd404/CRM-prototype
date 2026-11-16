@@ -105,8 +105,12 @@ export const api = {
 
   // 고급 모드: 템플릿의 제품 프로필 버전·직접 수정·피드백 개선안
   profileVersions: (templateId: number) => request<ProfileVersion[]>(`/templates/${templateId}/profile/versions`),
-  saveProfile: (templateId: number, profile: ProductProfile, note: string) =>
-    request<Template>(`/templates/${templateId}/profile`, { method: "PUT", body: JSON.stringify({ profile, note }) }),
+  // 만든 버전 (지금 규칙과 같아 만들지 않았으면 null). base_version 뒤로 다른 사람이 바꿨으면 409
+  saveProfile: (templateId: number, profile: ProductProfile, note: string, base_version: number | null) =>
+    request<{ version: number | null }>(`/templates/${templateId}/profile`, {
+      method: "PUT",
+      body: JSON.stringify({ profile, note, base_version }),
+    }),
   proposeProfile: (templateId: number) =>
     request<ProfileVersion>(`/templates/${templateId}/profile/propose`, { method: "POST" }),
   activateProfile: (templateId: number, version: number) =>

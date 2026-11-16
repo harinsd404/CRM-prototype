@@ -48,7 +48,8 @@ export default function TemplatesPage() {
     }, (e: Error) => setError(e.message));
   }, []);
 
-  const load = async (id: number) => {
+  // keepDraft: 고치던 내용(draft)을 그대로 둔다 (개선안 만들기·거절처럼 사용 중 규칙이 바뀌지 않는 동작)
+  const load = async (id: number, keepDraft = false) => {
     const [loaded, history, feedback] = await Promise.all([
       api.getTemplate(id),
       api.profileVersions(id),
@@ -57,7 +58,7 @@ export default function TemplatesPage() {
     setTemplate(loaded);
     setVersions(history);
     setOpenFeedback(feedback.length);
-    setDraft(loaded.profile ?? fold);
+    if (!keepDraft) setDraft(loaded.profile ?? fold);
   };
 
   useEffect(() => {
@@ -71,15 +72,18 @@ export default function TemplatesPage() {
   const active = template?.profile ?? fold;
   const proposal = versions.find((v) => v.status === "proposed");
   const changed = active && draft ? diffProfiles(active, draft).length : 0;
+  // 개선안을 만든 뒤 다른 버전이 쓰이게 됐으면 승인할 수 없다 (그 사이 바뀐 내용이 사라지므로)
+  const staleProposal =
+    proposal != null && proposal.base_version != null && proposal.base_version !== template?.profile_version;
 
-  const run = async (label: string, action: () => Promise<string>) => {
+  const run = async (label: string, action: () => Promise<string>, keepDraft = false) => {
     if (templateId == null) return;
     setBusy(label);
     setError(null);
     setMessage(null);
     try {
       const done = await action();
-      await load(templateId);
+      await load(templateId, keepDraft);
       setMessage(done);
     } catch (err) {
       setError((err as Error).message);
@@ -88,25 +92,31 @@ export default function TemplatesPage() {
     }
   };
 
-  const save = () =>
+  // 확인창은 run 밖에서 묻는다: 취소하면 아무것도 다시 불러오지 않아 고치던 내용이 그대로 남는다
+  const save = () => {
+    if (!window.confirm("이 템플릿의 제품 규칙을 새 버전으로 저장합니다. 모든 사용자의 다음 생성부터 바로 쓰입니다. 계속할까요?"))
+      return;
     run("save", async () => {
-      if (!window.confirm("이 템플릿의 제품 규칙을 새 버전으로 저장합니다. 모든 사용자의 다음 생성부터 바로 쓰입니다. 계속할까요?"))
-        return "저장하지 않았습니다.";
-      await api.saveProfile(templateId!, draft!, note);
+      const saved = await api.saveProfile(templateId!, draft!, note, template?.profile_version ?? null);
       setNote("");
-      return "새 버전으로 저장했습니다.";
+      return saved.version !== null
+        ? `v${saved.version}으로 저장했습니다.`
+        : "정리하고 나니 지금 쓰는 규칙과 같아 새 버전을 만들지 않았습니다.";
     });
+  };
 
-  const activate = (version: ProfileVersion) =>
+  const activate = (version: ProfileVersion) => {
+    const verb = version.status === "proposed" ? "승인" : "되돌리기";
+    const lose = changed > 0 ? "\n직접 고치던 내용(저장 전)은 사라집니다." : "";
+    if (!window.confirm(`v${version.version}을(를) ${verb}합니다. 모든 사용자의 다음 생성부터 바로 쓰입니다.${lose} 계속할까요?`))
+      return;
     run(`activate-${version.version}`, async () => {
-      const verb = version.status === "proposed" ? "승인" : "되돌리기";
-      if (!window.confirm(`v${version.version}을(를) ${verb}합니다. 모든 사용자의 다음 생성부터 바로 쓰입니다. 계속할까요?`))
-        return "바꾸지 않았습니다.";
       await api.activateProfile(templateId!, version.version);
       return version.status === "proposed"
         ? `개선안 v${version.version}을 승인했습니다. 반영한 피드백은 '반영함'으로 바꿨습니다.`
         : `v${version.version}으로 되돌렸습니다.`;
     });
+  };
 
   if (error && !template) return <p className="text-sm text-danger">{error}</p>;
 
@@ -156,7 +166,7 @@ export default function TemplatesPage() {
                 onClick={() => run("propose", async () => {
                   await api.proposeProfile(templateId!);
                   return "개선안을 만들었습니다. 아래에서 바뀐 점을 확인하고 승인하거나 거절하세요.";
-                })}
+                }, true)}
                 disabled={busy !== null || openFeedback === 0}
                 className="shrink-0 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-40"
               >
@@ -178,7 +188,7 @@ export default function TemplatesPage() {
                       onClick={() => run("reject", async () => {
                         await api.rejectProfile(templateId!, proposal.version);
                         return `개선안 v${proposal.version}을 거절했습니다.`;
-                      })}
+                      }, true)}
                       disabled={busy !== null}
                       className="rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40"
                     >
@@ -186,13 +196,20 @@ export default function TemplatesPage() {
                     </button>
                     <button
                       onClick={() => activate(proposal)}
-                      disabled={busy !== null}
+                      disabled={busy !== null || staleProposal}
+                      title={staleProposal ? "개선안을 만든 뒤 규칙이 바뀌었습니다. 다시 만들어 주세요." : undefined}
                       className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-40"
                     >
                       승인
                     </button>
                   </div>
                 </div>
+                {staleProposal && (
+                  <p className="text-xs text-danger">
+                    이 개선안은 v{proposal.base_version}을 바탕으로 만들었는데, 그 뒤 v{template?.profile_version}이 쓰이고
+                    있습니다. 승인하면 그 사이 바뀐 내용이 사라지므로 '개선안 다시 만들기'를 눌러 주세요.
+                  </p>
+                )}
                 <pre className="whitespace-pre-wrap text-xs text-gray-700">{proposal.note}</pre>
                 <ProfileDiff before={active} after={proposal.profile} />
               </div>

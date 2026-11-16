@@ -109,7 +109,8 @@ export default function App() {
     } catch {
       // 저장소를 못 쓰면 이번 화면에서만 유지
     }
-    if (!next && !run && home.view === "templates") goHome({ view: "list" });
+    // 실행 화면을 보고 있어도 돌아갈 화면을 바꿔 둔다 (끈 뒤 실행을 닫으면 템플릿 화면이 나오지 않게)
+    if (!next && home.view === "templates") setHome({ view: "list" });
   };
 
   const logout = async () => {

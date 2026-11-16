@@ -19,7 +19,7 @@ from app.core.render import build_html_input, render_crm
 from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE
 from app.core import templates
 from app.core.feedback import FeedbackIn, add_feedback
-from app.core.templates import TemplateNameTaken, TemplateOut, get_template
+from app.core.templates import ProfileConflict, TemplateNameTaken, TemplateOut, get_template
 from app.core.state import MAIN_SLOT, STEP_ORDER, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
 from app.steps.copy import CopyOption, CopyStep
@@ -112,6 +112,11 @@ class SaveTemplateRequest(BaseModel):
     name: str | None = Field(None, max_length=100)  # 새 템플릿 이름 (덮어쓸 때 주면 이름도 바꾼다)
 
 
+def _started_version(run: RunState, base: TemplateOut) -> int | None:
+    """이 실행이 시작할 때 쓴 base 템플릿의 프로필 버전 (다른 템플릿에서 시작했거나 기록이 없으면 None = 검사 안 함)."""
+    return run.input.profile_version if run.input.template_id == base.id else None
+
+
 @router.post("/{run_id}/template", response_model=TemplateOut)
 def save_as_template(run_id: str, body: SaveTemplateRequest, user: CurrentUser) -> TemplateOut:
     """이 실행의 제품명·컬러·Pod·제품 사진을 템플릿으로 저장한다 (새로 만들기 또는 덮어쓰기)."""
@@ -131,13 +136,24 @@ def save_as_template(run_id: str, body: SaveTemplateRequest, user: CurrentUser) 
         if base is None:
             saved = templates.create_template(data, user.id, source="run")
         else:
-            saved = templates.update_template(base.id, data, user.id, source="run")
+            base_version = _started_version(run, base)
+            if base_version is not None and base_version != base.profile_version:
+                # 실행을 시작한 뒤 템플릿 규칙이 바뀌었다. 이 실행에서 규칙을 고치지 않았으면 새 규칙을 그대로 둔다
+                if run.input.product_profile == templates.profile_at(base.id, base_version):
+                    data.profile = None
+            saved = templates.update_template(base.id, data, user.id, source="run", base_version=base_version)
             assert saved is not None
     except TemplateNameTaken as e:
         raise HTTPException(409, str(e)) from e
-    # 다음에 이 실행으로 "다른 페르소나로"를 만들면 저장한 템플릿을 불러오게 한다
-    if run.input.template_id != saved.id:
-        run.input.template_id = saved.id
+    except ProfileConflict as e:
+        raise HTTPException(
+            409, f"{e} 이 실행에서 고친 규칙으로 덮어쓰면 그 내용이 사라집니다. 새 템플릿으로 저장해 주세요."
+        ) from e
+    # 다음에 이 실행으로 "다른 페르소나로"를 만들면 저장한 템플릿을 불러오게 한다.
+    # 이 실행의 규칙이 템플릿에 들어갔으면 다시 저장할 때의 기준 버전도 맞춘다 (새 규칙을 그대로 뒀으면 예전 기준을 남겨 둔다)
+    version = saved.profile_version if saved.profile == run.input.product_profile else run.input.profile_version
+    if (run.input.template_id, run.input.profile_version) != (saved.id, version):
+        run.input.template_id, run.input.profile_version = saved.id, version
         store.save_run(run)
     return saved
 

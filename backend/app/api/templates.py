@@ -6,7 +6,14 @@ from pydantic import BaseModel, Field
 from app.api.auth import CurrentUser
 from app.core import feedback, guard, templates
 from app.core.profile import FOLD_PROFILE, ProductProfile
-from app.core.templates import ProfileVersionOut, TemplateData, TemplateNameTaken, TemplateOut, TemplateSummary
+from app.core.templates import (
+    ProfileConflict,
+    ProfileVersionOut,
+    TemplateData,
+    TemplateNameTaken,
+    TemplateOut,
+    TemplateSummary,
+)
 from app.steps.improve import note_text, propose
 
 logger = logging.getLogger(__name__)
@@ -70,17 +77,25 @@ def profile_versions(template_id: int, user: CurrentUser) -> list[ProfileVersion
 class SaveProfileRequest(BaseModel):
     profile: ProductProfile
     note: str = Field(default="", max_length=1000)
+    base_version: int | None = Field(default=None, description="고치기 시작할 때의 버전. 그 뒤로 바뀌었으면 409")
 
 
-@router.put("/{template_id}/profile", response_model=TemplateOut)
-def save_profile(template_id: int, body: SaveProfileRequest, user: CurrentUser) -> TemplateOut:
+class SaveProfileResult(BaseModel):
+    version: int | None  # 만든 버전. 지금 쓰는 규칙과 같아(코드가 정리한 뒤) 만들지 않았으면 null
+
+
+@router.put("/{template_id}/profile", response_model=SaveProfileResult)
+def save_profile(template_id: int, body: SaveProfileRequest, user: CurrentUser) -> SaveProfileResult:
     """고급 모드에서 고친 프로필을 새 버전으로 저장한다 (모든 사용자에게 바로 쓰인다)."""
     _template_or_404(template_id)
+    note = body.note.strip() or "고급 모드에서 직접 고침"
     try:
-        templates.save_profile(template_id, body.profile, user.id, body.note.strip() or "고급 모드에서 직접 고침")
+        version = templates.save_profile(template_id, body.profile, user.id, note, body.base_version)
+    except ProfileConflict as e:
+        raise HTTPException(409, f"{e} 다시 불러온 뒤 고쳐 주세요.") from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
-    return _template_or_404(template_id)
+    return SaveProfileResult(version=version)
 
 
 @router.post("/{template_id}/profile/propose", response_model=ProfileVersionOut)
@@ -97,24 +112,23 @@ async def propose_profile(template_id: int, user: CurrentUser) -> ProfileVersion
     except Exception as e:
         logger.exception("프로필 개선안 생성 실패")
         raise HTTPException(502, str(e)) from e
-    version = templates.add_proposal(template_id, draft.profile, user.id, note_text(draft), draft.addressed_feedback)
-    return next(v for v in templates.list_profile_versions(template_id) if v.version == version)
+    return templates.add_proposal(
+        template_id, draft.profile, user.id, note_text(draft), draft.addressed_feedback, template.profile_version
+    )
 
 
 @router.post("/{template_id}/profile/versions/{version}/activate", response_model=ProfileVersionOut)
 def activate(template_id: int, version: int, user: CurrentUser) -> ProfileVersionOut:
     """개선안 승인 또는 예전 버전으로 되돌리기. 개선안을 승인하면 반영한 피드백을 '반영함'으로 바꾼다."""
     _template_or_404(template_id)
-    before = next((v for v in templates.list_profile_versions(template_id) if v.version == version), None)
     try:
         activated = templates.activate_version(template_id, version, user.id)
+    except ProfileConflict as e:
+        raise HTTPException(409, f"{e} 승인하면 그 내용이 사라지므로 개선안을 다시 만들어 주세요.") from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     if activated is None:
         raise HTTPException(400, "되돌리거나 승인할 수 있는 버전이 아닙니다.")
-    if before is not None and before.status == "proposed":
-        for feedback_id in activated.feedback_ids:
-            feedback.set_status(feedback_id, "applied")
     return activated
 
 

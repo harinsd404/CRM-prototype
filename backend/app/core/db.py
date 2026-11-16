@@ -101,6 +101,7 @@ class ProfileVersion(Base):
     source: Mapped[str] = mapped_column(String(10), default="manual")
     note: Mapped[str] = mapped_column(Text, default="")  # 무엇을 왜 바꿨는지
     feedback_ids: Mapped[str] = mapped_column(Text, default="")  # 개선안이 반영한 피드백 id (쉼표 구분)
+    base_version: Mapped[int | None]  # 개선안을 만들 때 쓰던 active 버전 (승인할 때 그 사이 바뀌었는지 본다)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
@@ -171,6 +172,8 @@ def _add_missing_columns() -> None:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(profile_versions)")}
         if columns and "feedback_ids" not in columns:
             conn.exec_driver_sql("ALTER TABLE profile_versions ADD COLUMN feedback_ids TEXT NOT NULL DEFAULT ''")
+        if columns and "base_version" not in columns:
+            conn.exec_driver_sql("ALTER TABLE profile_versions ADD COLUMN base_version INTEGER")
 
 
 @contextmanager

@@ -120,6 +120,8 @@ export interface RunInput {
   extra_product_images?: string[];
   // 제품 프로필(프롬프트의 제품별 블록). null이면 서버가 Galaxy Z Fold 기본 프로필을 쓴다
   profile?: ProductProfile | null;
+  // 불러온 템플릿 프로필의 버전. 실행을 그 템플릿에 덮어쓸 때 그 사이 규칙이 바뀌었는지 서버가 본다
+  profile_version?: number | null;
 }
 
 /** 제품 프로필 = 프롬프트의 제품별 블록 (backend/app/core/profile.py). 사진 자리와 제품 상태를 정한다 */
@@ -164,6 +166,7 @@ export interface ProfileVersion {
   source: "seed" | "ai" | "manual" | "feedback" | "run";
   note: string;
   feedback_ids: number[];
+  base_version: number | null; // 개선안: 만들 때 쓰던 버전
   created_by: string | null;
   created_at: string;
   profile: ProductProfile;
@@ -221,6 +224,7 @@ export interface Template {
   product_images: Record<string, string>;
   extra_product_images: string[];
   profile: ProductProfile | null; // 지금 쓰는 버전 (없으면 Fold 기본 프로필)
+  profile_version: number | null;
   updated_at: string;
   updated_by: string | null;
 }

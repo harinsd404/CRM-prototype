@@ -56,6 +56,10 @@ class RunInput(BaseModel):
     profile: ProductProfile | None = Field(
         default=None, description="제품 프로필(프롬프트의 제품별 블록). 템플릿에서 불러오거나 AI가 만든다. 없으면 Fold"
     )
+    profile_version: int | None = Field(
+        default=None,
+        description="불러온 템플릿 프로필의 버전. 실행을 그 템플릿에 덮어쓸 때 그 사이 규칙이 바뀌었는지 본다",
+    )
 
     @model_validator(mode="before")
     @classmethod
