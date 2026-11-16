@@ -10,7 +10,7 @@
 ```mermaid
 flowchart TD
     IN[/"🟧 입력 폼<br/>타겟 페르소나 · 소구 강도 · 이미 쓴 1순위 Pod<br/>제품명 · 컬러 · Pod별 스펙"/]
-    IN -- "RunInput<br/>POST /api/runs" --> S0[("🟩 state.json 생성<br/>data/runs/{run_id}/")]
+    IN -- "RunInput<br/>POST /api/runs" --> S0[("🟩 실행 생성<br/>DB runs + data/runs/{run_id}/")]
 
     %% ① Pod 순서·레이아웃
     S0 -- "RunInput" --> G1["🟦 ① Pod 순서·레이아웃 생성<br/>prompts/pod.md × 방향 3개 병렬"]
@@ -46,7 +46,7 @@ flowchart TD
 
     %% ④ 조립
     D3 -- "①②③ 선택 결과" --> J4["⬜ ④ 조립 POST /render<br/>html_input.json(P1 [8] 형식) → Jinja2 템플릿(P3)<br/>LLM 사용 안 함"]
-    J4 --> D4[("🟩 state.json의 html<br/>html_input.json")]
+    J4 --> D4[("🟩 RunState.html (DB)<br/>html_input.json")]
     D4 --> H4{"🟧 사람: 미리보기 확인"}
     H4 -- "저장하기" --> OUT[/"ZIP: index.html · images/ · fonts/ · html_input.json"/]
 
@@ -77,7 +77,7 @@ flowchart LR
     TXT -- "구조화 JSON" --> BE
     BE -- "P2 프롬프트 + 제품 사진" --> IMG["Vertex AI Gemini<br/>이미지 gemini-3.1-flash-image"]
     IMG -- "PNG" --> BE
-    BE <-- "읽기·쓰기" --> FS[("backend/data/runs/{run_id}/<br/>state.json · images/ · html_input.json")]
+    BE <-- "읽기·쓰기" --> FS[("data/app.db (실행 상태)<br/>data/runs/{run_id}/ images/ · html_input.json")]
     BE -- "참조 이미지 읽기" --> PR[("backend/assets/product/<br/>공식 제품 사진")]
 ```
 
@@ -89,7 +89,7 @@ flowchart LR
 
 | 단계 | 받는 데이터 (어디서) | AI·코드가 하는 일 | 내보내는 데이터 | 사람이 하는 일 |
 |---|---|---|---|---|
-| 입력 | — | `RunInput` 검증 (스펙이 하나도 없으면 422) | `RunInput` → `state.json` | 폼 작성 후 시작 |
+| 입력 | — | `RunInput` 검증 (스펙이 하나도 없으면 422) | `RunInput` → DB `runs` | 폼 작성 후 시작 |
 | ① Pod 순서·레이아웃 | `RunInput` | 방향 3개로 3번 병렬 생성 → `check_pod_plan` | `PodOption` 3안 + 경고 | 1안 선택 / 블록으로 순서·레이아웃 직접 수정 / 수정 요청 넣어 재생성 |
 | ② 카피 | `RunInput` + ①에서 **선택한** Pod 순서·레이아웃 | 3번 병렬 생성 → 20자 넘은 헤드만 줄이기 → `check_copy` | `CopyOption` 3안 + 경고 | 1안 선택 / 헤드·바디 직접 수정 / Pod 여러 개(전체) 골라 수정 요청 / 재생성 |
 | ③ 이미지 | `RunInput` + ①의 Pod별 레이아웃 + ②에서 **선택한** Pod별 헤드·바디 | Pod마다: 연출안 3개 → 화면비·Safe Zone 고정 → P2 프롬프트 + 제품 사진으로 이미지 생성 → `check_brief` | Pod별 `ImageOption` 3안 (×5 Pod) | Pod마다 1안 선택 / 이미지 한 장 수정 요청(새 안 추가) / 그 Pod만 재생성 |
@@ -103,6 +103,6 @@ flowchart LR
 | 앞 단계를 다시 생성하면 뒤 단계 초기화 | `reset_after()`가 뒤 단계와 HTML을 비움. 화면은 먼저 확인창을 띄움 | 고를 안 자체가 새로 바뀐다 |
 | 앞 단계를 다시 선택·직접 수정·수정 요청하면 뒤 단계 유지 | `_apply_change()`: ② 카피안의 Pod 순서를 ①에 맞추고, 영향받은 ③ 이미지에 `stale` 표시, 조립된 ④는 다시 조립 | 이미지까지 만든 뒤 조금 고칠 때마다 전부 다시 만들면 시간·비용이 크다. 카피·이미지는 Pod 이름으로 묶여 있어 순서가 바뀌어도 쓸 수 있다 |
 | ③은 모든 Pod를 골라야 완료 | 한 Pod라도 비면 ④ 조립 불가 (400) | 최종 시안에 빈 Pod가 생기면 안 된다 |
-| 한 실행에서 생성은 한 번에 하나 | 409 | 동시에 돌면 호출이 두 배가 되고 `state.json`을 서로 덮어쓴다 |
+| 한 실행에서 생성은 한 번에 하나 | 409 | 동시에 돌면 호출이 두 배가 되고 진행 상태를 서로 덮어쓴다 |
 | 생성 요청 1분 10회, Vertex 이미지 하루 100장 | 429 / 생성 전에 거절 | 반복 호출·비용 폭주 방지 |
 | 3안 중 일부만 실패 | 성공한 안만 보여줌. 모두 실패해야 502 | 한 안의 일시 오류로 단계 전체를 다시 돌리지 않게 |

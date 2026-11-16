@@ -44,7 +44,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
   };
 
   return (
-    <section ref={sectionRef} id="step-render" className={`scroll-mt-20 rounded-xl border bg-white p-6 ${ready ? "" : "opacity-50"}`}>
+    <section ref={sectionRef} id="step-render" className={`scroll-mt-28 rounded-xl border bg-white p-6 ${ready ? "" : "opacity-50"}`}>
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-ink">④ 최종 CRM 시안</h2>
         <div className="flex items-center gap-3">

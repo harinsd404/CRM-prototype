@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import zipfile
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -10,8 +11,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field, ValidationError
 
+from app.api.auth import CurrentUser
 from app.config import settings
 from app.core import guard, store
+from app.core.db import User
 from app.core.render import build_html_input, render_crm
 from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE, PodName
 from app.core.state import MAIN_SLOT, STEP_ORDER, Option, RunInput, RunState, SlotState
@@ -40,8 +43,9 @@ class SelectRequest(BaseModel):
     edited: dict[str, Any] | None = None
 
 
-def _get_run(run_id: str) -> RunState:
-    run = store.load_run(run_id)
+def _get_run(run_id: str, user: User) -> RunState:
+    """다른 사용자의 실행은 없는 것으로 본다."""
+    run = store.load_run(run_id, user.id)
     if run is None:
         raise HTTPException(404, f"실행을 찾을 수 없습니다: {run_id}")
     return run
@@ -53,28 +57,67 @@ def _get_step(step_name: str) -> Step:
     return STEPS[step_name]
 
 
+class RunSummary(BaseModel):
+    """내 작업 목록의 한 줄."""
+
+    id: str
+    created_at: datetime
+    updated_at: datetime
+    target_id: str
+    persona: str
+    mood: str
+    product_name: str
+    completed_steps: list[str]  # 선택까지 끝낸 단계
+    has_html: bool  # ④ 시안을 조립했는지
+    input: RunInput  # "이 입력으로 새로 만들기"에 쓴다
+
+
+@router.get("", response_model=list[RunSummary])
+def list_runs(user: CurrentUser) -> list[RunSummary]:
+    return [
+        RunSummary(
+            id=run.id,
+            created_at=run.created_at,
+            updated_at=run.updated_at,
+            target_id=run.input.target_id,
+            persona=run.input.persona,
+            mood=run.input.mood,
+            product_name=run.input.product_name,
+            completed_steps=[name for name in STEP_ORDER if _is_complete(run, name)],
+            has_html=run.html is not None,
+            input=run.input,
+        )
+        for run in store.list_runs(user.id)
+    ]
+
+
+def _is_complete(run: RunState, step_name: str) -> bool:
+    previous = run.previous_step(step_name)
+    return (previous is None or _is_complete(run, previous)) and run.is_complete(step_name)
+
+
 @router.post("", response_model=RunState)
-def create_run(run_input: RunInput) -> RunState:
+def create_run(run_input: RunInput, user: CurrentUser) -> RunState:
     try:
-        return store.create_run(run_input)
+        return store.create_run(run_input, user.id)
     except ValueError as e:  # 올린 제품 사진을 찾을 수 없음
         raise HTTPException(400, str(e)) from e
 
 
 @router.get("/{run_id}", response_model=RunState)
-def get_run(run_id: str) -> RunState:
-    return _get_run(run_id)
+def get_run(run_id: str, user: CurrentUser) -> RunState:
+    return _get_run(run_id, user)
 
 
 @router.post("/{run_id}/steps/{step_name}/generate", response_model=RunState)
 async def generate_step(
-    run_id: str, step_name: str, slot: str | None = None, body: GenerateRequest | None = None
+    run_id: str, step_name: str, user: CurrentUser, slot: str | None = None, body: GenerateRequest | None = None
 ) -> RunState:
     """N안 생성. 재생성도 같은 API. slot을 주면 그 슬롯(예: 이미지 단계의 Pod 하나)만 다시 만든다.
     body.feedback을 주면 사람의 수정 요청을 모든 안에 반영한다."""
     feedback = body.feedback.strip() if body and body.feedback else None
     step = _get_step(step_name)
-    run = _get_run(run_id)
+    run = _get_run(run_id, user)
 
     previous = run.previous_step(step_name)
     if previous and not run.is_complete(previous):
@@ -143,10 +186,10 @@ async def _generate_images(step: Step, run: RunState, slots: list[str], feedback
 
 
 @router.post("/{run_id}/steps/{step_name}/select", response_model=RunState)
-def select_option(run_id: str, step_name: str, body: SelectRequest) -> RunState:
+def select_option(run_id: str, step_name: str, body: SelectRequest, user: CurrentUser) -> RunState:
     """안 하나를 선택한다. edited를 주면 그 안을 고친 내용으로 저장한다 (같은 스키마·규칙으로 검사)."""
     step = _get_step(step_name)
-    run = _get_run(run_id)
+    run = _get_run(run_id, user)
     slot = run.steps[step_name].slots.get(body.slot)
     if slot is None:
         raise HTTPException(400, f"'{step_name}' 단계에 생성된 '{body.slot}' 슬롯이 없습니다.")
@@ -170,14 +213,14 @@ def select_option(run_id: str, step_name: str, body: SelectRequest) -> RunState:
 
 
 @router.post("/{run_id}/steps/{step_name}/revise", response_model=RunState)
-async def revise_option(run_id: str, step_name: str, body: ReviseRequest) -> RunState:
+async def revise_option(run_id: str, step_name: str, body: ReviseRequest, user: CurrentUser) -> RunState:
     """고른 안의 일부를 사람의 요청대로 고친다.
     - 이미지: 그 이미지를 고친 새 안을 슬롯에 추가하고 선택한다 (원래 안은 남는다).
     - 카피: 그 안에서 지정한 Pod들(전체 포함)만 다시 쓰고, 수정본으로 선택한다."""
     step = _get_step(step_name)
     if not isinstance(step, ImageStep | CopyStep):
         raise HTTPException(400, "수정 요청은 카피와 이미지 단계에서만 할 수 있습니다.")
-    run = _get_run(run_id)
+    run = _get_run(run_id, user)
     slot = run.steps[step_name].slots.get(body.slot)
     if slot is None:
         raise HTTPException(400, f"'{step_name}' 단계에 생성된 '{body.slot}' 슬롯이 없습니다.")
@@ -288,9 +331,9 @@ def _render(run: RunState) -> None:
 
 
 @router.post("/{run_id}/steps/image/slots/{slot}/keep", response_model=RunState)
-def keep_image(run_id: str, slot: str) -> RunState:
+def keep_image(run_id: str, slot: str, user: CurrentUser) -> RunState:
     """앞 단계가 바뀌었다는 표시를 지운다. 사람이 지금 이미지를 그대로 쓰기로 한 경우."""
-    run = _get_run(run_id)
+    run = _get_run(run_id, user)
     state = run.steps["image"].slots.get(slot)
     if state is None:
         raise HTTPException(400, f"이미지 단계에 생성된 '{slot}' 슬롯이 없습니다.")
@@ -300,8 +343,8 @@ def keep_image(run_id: str, slot: str) -> RunState:
 
 
 @router.post("/{run_id}/render", response_model=RunState)
-def render(run_id: str) -> RunState:
-    run = _get_run(run_id)
+def render(run_id: str, user: CurrentUser) -> RunState:
+    run = _get_run(run_id, user)
     missing = [name for name in STEP_ORDER if not run.is_complete(name)]
     if missing:
         raise HTTPException(400, f"아직 선택하지 않은 단계가 있습니다: {', '.join(missing)}")
@@ -311,8 +354,8 @@ def render(run_id: str) -> RunState:
 
 
 @router.get("/{run_id}/preview", response_class=HTMLResponse)
-def preview(run_id: str) -> str:
-    run = _get_run(run_id)
+def preview(run_id: str, user: CurrentUser) -> str:
+    run = _get_run(run_id, user)
     if run.html is None:
         raise HTTPException(404, "아직 조립된 시안이 없습니다.")
     # 배포 경로 아래에서 열리면 시안 안의 이미지·폰트 주소(/api/...)에도 경로를 붙인다
@@ -324,9 +367,9 @@ _FONTS_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"
 
 
 @router.get("/{run_id}/download")
-def download(run_id: str) -> Response:
+def download(run_id: str, user: CurrentUser) -> Response:
     """최종 시안을 ZIP으로 내려받는다. 서버 없이 열리도록 이미지·폰트 주소를 ZIP 안의 상대 경로로 바꾼다."""
-    run = _get_run(run_id)
+    run = _get_run(run_id, user)
     if run.html is None:
         raise HTTPException(404, "아직 조립된 시안이 없습니다.")
     folder = store.run_dir(run.id)

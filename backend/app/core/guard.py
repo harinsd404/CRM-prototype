@@ -21,7 +21,7 @@ _generate_times: deque[float] = deque()
 
 @contextmanager
 def run_lock(run_id: str) -> Iterator[None]:
-    """한 실행에서는 생성을 한 번에 하나만. 동시에 두 개가 돌면 호출이 두 배가 되고 state.json도 서로 덮어쓴다."""
+    """한 실행에서는 생성을 한 번에 하나만. 동시에 두 개가 돌면 호출이 두 배가 되고 진행 상태도 서로 덮어쓴다."""
     if run_id in _busy_runs:
         raise HTTPException(409, "이 실행은 이미 생성 중입니다. 끝난 뒤 다시 시도해 주세요.")
     _busy_runs.add(run_id)

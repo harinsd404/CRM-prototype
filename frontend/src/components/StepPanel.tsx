@@ -103,7 +103,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
   return (
     <section
       id={`step-${step}`}
-      className={`scroll-mt-20 rounded-xl border bg-white p-6 ${locked ? "opacity-50" : ""}`}
+      className={`scroll-mt-28 rounded-xl border bg-white p-6 ${locked ? "opacity-50" : ""}`}
     >
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">

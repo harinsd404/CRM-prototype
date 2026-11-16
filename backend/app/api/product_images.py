@@ -1,13 +1,14 @@
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.api.auth import current_user
 from app.config import settings
 from app.core.domain import PRODUCT_IMAGE_LABELS
 from app.core.store import default_product_image
 
-router = APIRouter(tags=["product-images"])
+router = APIRouter(tags=["product-images"], dependencies=[Depends(current_user)])
 
 # 이미지 모델에 그대로 보내므로 Vertex가 받는 형식만 받는다
 _UPLOAD_TYPES = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}

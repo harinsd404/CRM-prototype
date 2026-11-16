@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { api, setUnauthorizedHandler } from "./api";
 import ErrorMessage from "./components/ErrorMessage";
 import HtmlPreview from "./components/HtmlPreview";
 import InputForm from "./components/InputForm";
+import LoginForm from "./components/LoginForm";
+import RunList from "./components/RunList";
 import StepPanel from "./components/StepPanel";
 import Stepper from "./components/Stepper";
-import { STEP_ORDER, isStepComplete, type RunInput, type RunState } from "./types";
+import { Spinner } from "./components/icons";
+import { STEP_ORDER, isStepComplete, type Me, type RunInput, type RunState } from "./types";
 
 // 새로고침해도 이어서 작업할 수 있게 run id를 URL(?run=)에 둔다.
 function readRunId() {
@@ -19,55 +22,127 @@ function writeRunId(runId: string | null) {
   window.history.replaceState(null, "", url);
 }
 
+// 실행이 없을 때 보여 줄 화면: 내 작업 목록 / 입력 폼
+type Home = { view: "list" } | { view: "new"; input: RunInput | null };
+
 export default function App() {
+  const [me, setMe] = useState<Me | null | undefined>(undefined); // undefined = 확인 중, null = 로그인 필요
   const [run, setRun] = useState<RunState | null>(null);
+  const [home, setHome] = useState<Home>({ view: "list" });
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [lastInput, setLastInput] = useState<RunInput | null>(null);
 
   useEffect(() => {
+    setUnauthorizedHandler(() => setMe(null));
+    api.me().then(setMe, () => setMe(null));
+  }, []);
+
+  // 로그인이 확인되면 주소의 ?run= 실행을 연다
+  useEffect(() => {
+    if (!me) return;
     const runId = readRunId();
-    if (!runId) return;
+    if (runId) openRun(runId);
+  }, [me]);
+
+  const openRun = (runId: string) => {
+    setLoadError(null);
     api.getRun(runId).then(
       (loaded) => {
+        writeRunId(loaded.id);
         setRun(loaded);
         // 단계는 실행을 불러온 뒤에 그려지므로 주소의 #step-… 위치로 그때 이동한다
-        requestAnimationFrame(() => document.querySelector(window.location.hash || "#none")?.scrollIntoView());
+        requestAnimationFrame(() => {
+          const target = window.location.hash && document.querySelector(window.location.hash);
+          if (target) target.scrollIntoView();
+          else window.scrollTo({ top: 0 });
+        });
       },
-      (e: Error) => setLoadError(e.message),
+      (e: Error) => {
+        writeRunId(null);
+        setLoadError(e.message);
+      },
     );
-  }, []);
+  };
 
   const startRun = (newRun: RunState) => {
     writeRunId(newRun.id);
     setRun(newRun);
   };
 
-  // 진행 상황은 서버에 남아 있어서 ?run= 주소로 언제든 돌아올 수 있다
-  const reset = () => {
-    if (run && !window.confirm("입력 화면으로 돌아갑니다. 지금 입력값은 그대로 채워 둡니다. 계속할까요?")) return;
-    setLastInput(run?.input ?? null);
+  const goHome = (next: Home) => {
     writeRunId(null);
+    window.history.replaceState(null, "", window.location.pathname + window.location.search);
     window.scrollTo({ top: 0 });
     setRun(null);
+    setHome(next);
     setLoadError(null);
   };
 
+  // 진행 상황은 서버에 남아 있어서 내 작업 목록에서 언제든 이어서 만들 수 있다
+  const reset = () => {
+    if (run && !window.confirm("입력 화면으로 돌아갑니다. 지금 입력값은 그대로 채워 둡니다. 계속할까요?")) return;
+    goHome({ view: "new", input: run?.input ?? null });
+  };
+
+  const logout = async () => {
+    await api.logout().catch(() => null);
+    goHome({ view: "list" });
+    setMe(null);
+  };
+
+  if (me === undefined) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="h-6 w-6 text-gray-400" />
+      </div>
+    );
+  }
+  if (me === null) return <LoginForm onLogin={setMe} />;
+
   return (
     <div className="min-h-screen">
-      {/* 진행 단계만 위에 고정해 둔다 */}
-      {run && (
-        <header className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
-          <div className="mx-auto flex max-w-6xl justify-center px-6 py-3">
+      <header className="sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-2.5 text-sm">
+          <button onClick={() => goHome({ view: "list" })} className="font-semibold text-ink">
+            CRM 시안 생성
+          </button>
+          <nav className="flex items-center gap-4">
+            <button
+              onClick={() => goHome({ view: "list" })}
+              className={!run && home.view === "list" ? "font-medium text-primary" : "text-gray-600 hover:text-gray-900"}
+            >
+              내 작업
+            </button>
+            <button
+              onClick={() => goHome({ view: "new", input: null })}
+              className={!run && home.view === "new" ? "font-medium text-primary" : "text-gray-600 hover:text-gray-900"}
+            >
+              새로 만들기
+            </button>
+            <span className="text-gray-300">|</span>
+            <span className="text-gray-500">{me.username}</span>
+            <button onClick={logout} className="text-gray-500 hover:text-gray-900">
+              로그아웃
+            </button>
+          </nav>
+        </div>
+        {/* 실행 중에는 진행 단계도 위에 고정해 둔다 */}
+        {run && (
+          <div className="mx-auto flex max-w-6xl justify-center border-t px-6 py-3">
             <Stepper run={run} />
           </div>
-        </header>
-      )}
+        )}
+      </header>
 
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
         {loadError && <ErrorMessage message={loadError} onClose={() => setLoadError(null)} />}
 
         {!run ? (
-          <InputForm initial={lastInput} onCreated={startRun} />
+          home.view === "list" ? (
+            <RunList onOpen={openRun} onNew={(input) => goHome({ view: "new", input })} />
+          ) : (
+            // key: 다른 입력으로 새로 만들기를 누르면 폼을 새로 채운다
+            <InputForm key={JSON.stringify(home.input)} initial={home.input} onCreated={startRun} />
+          )
         ) : (
           <>
             <section className="rounded-xl border bg-white p-5 text-sm">

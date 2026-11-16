@@ -1,4 +1,4 @@
-import type { ProductImage, RunInput, RunState, StepContents, StepName } from "./types";
+import type { Me, ProductImage, RunInput, RunState, RunSummary, StepContents, StepName } from "./types";
 
 // 배포 경로(예: /park) 아래에서 열릴 때를 위해 /api 주소 앞에 붙인다. 로컬 개발은 빈 문자열
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -8,12 +8,19 @@ export function withBase<T extends string | null | undefined>(url: T): T {
   return (typeof url === "string" && url.startsWith("/api/") ? `${BASE}${url}` : url) as T;
 }
 
+// 로그인이 풀리면(401) 화면이 로그인 창으로 돌아가도록 App이 등록한다
+let onUnauthorized: () => void = () => {};
+export function setUnauthorizedHandler(handler: () => void) {
+  onUnauthorized = handler;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}/api${path}`, {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/auth/")) onUnauthorized();
     const body = await res.json().catch(() => null);
     const detail = body?.detail;
     // FastAPI 입력 검증 오류(422)는 detail이 배열이다
@@ -24,6 +31,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  login: (username: string, password: string) =>
+    request<Me>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+
+  me: () => request<Me>("/auth/me"),
+
+  // 내 실행 목록 (최근에 고친 순서)
+  listRuns: () => request<RunSummary[]>("/runs"),
+
   createRun: (input: RunInput) =>
     request<RunState>("/runs", { method: "POST", body: JSON.stringify(input) }),
 

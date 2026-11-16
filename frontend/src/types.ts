@@ -113,6 +113,24 @@ export interface RunInput {
 export const MAX_EXTRA_PRODUCT_IMAGES = 5;
 
 // GET /api/product-images (backend/app/api/product_images.py)
+export interface Me {
+  username: string;
+}
+
+/** 내 작업 목록의 한 줄 (backend/app/api/runs.py RunSummary) */
+export interface RunSummary {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  target_id: string;
+  persona: string;
+  mood: Mood;
+  product_name: string;
+  completed_steps: StepName[];
+  has_html: boolean;
+  input: RunInput;
+}
+
 export interface ProductImage {
   role: string;
   label: string;

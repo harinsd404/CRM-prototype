@@ -115,7 +115,7 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 
 ### `StepState` / `RunState` — 실행 전체 상태
 
-모든 API가 이 `RunState`를 그대로 돌려주고, `data/runs/{id}/state.json`에도 이 모양으로 저장된다.
+모든 API가 이 `RunState`를 그대로 돌려주고, DB(`data/app.db`)의 `runs.state`에도 이 모양(JSON)으로 저장된다.
 
 | 필드 | 타입 | 설명 |
 |---|---|---|
@@ -517,7 +517,8 @@ crm-20261027-091857-365eae.zip
 
 | 경로 | 내용 |
 |---|---|
-| `backend/data/runs/{run_id}/state.json` | `RunState` 전체 (입력, 모든 안, 선택, 수정본, HTML) |
+| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`) |
+| `backend/data/runs/{run_id}/product/` | 실행을 만들 때 복사한 제품 사진 |
 | `backend/data/runs/{run_id}/images/` | 생성된 이미지 (`.png`, placeholder 모드는 `.svg`) |
 | `backend/data/runs/{run_id}/html_input.json` | 7-1 |
 | `backend/data/usage.json` | 하루 이미지 호출 수 `{"date": "2026-10-27", "images": 42}` |

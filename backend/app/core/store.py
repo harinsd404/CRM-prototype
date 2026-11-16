@@ -4,7 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
+from sqlalchemy import select
+
 from app.config import settings
+from app.core.db import Run, session_scope
 from app.core.domain import PRODUCT_IMAGE_LABELS
 from app.core.state import RunInput, RunState
 
@@ -57,7 +60,7 @@ def _copy_product_images(run_input: RunInput, folder: Path) -> None:
         shutil.copyfile(source, folder / f"{role}{source.suffix.lower()}")
 
 
-def create_run(run_input: RunInput) -> RunState:
+def create_run(run_input: RunInput, user_id: int) -> RunState:
     now = datetime.now()
     run = RunState(
         id=f"{now:%Y%m%d-%H%M%S}-{uuid4().hex[:6]}",
@@ -66,25 +69,45 @@ def create_run(run_input: RunInput) -> RunState:
         input=run_input,
     )
     _copy_product_images(run_input, run_dir(run.id) / "product")
-    save_run(run)
+    with session_scope() as db:
+        db.add(
+            Run(
+                id=run.id,
+                user_id=user_id,
+                persona=run_input.persona,
+                product_name=run_input.product_name,
+                state=run.model_dump_json(),
+                created_at=run.created_at,
+                updated_at=run.updated_at,
+            )
+        )
     return run
 
 
 def save_run(run: RunState) -> None:
+    """진행 상태를 DB에 쓴다. 생성 중에도 화면이 주기적으로 읽으므로 한 번의 트랜잭션으로 바꾼다."""
     run.updated_at = datetime.now()
-    path = run_dir(run.id)
-    path.mkdir(parents=True, exist_ok=True)
-    # 생성 중에도 화면이 state.json을 읽으므로, 다 쓴 임시 파일로 한 번에 바꿔 반쯤 쓴 파일을 읽지 않게 한다
-    tmp = path / "state.json.tmp"
-    tmp.write_text(run.model_dump_json(indent=2), encoding="utf-8")
-    tmp.replace(path / "state.json")
+    with session_scope() as db:
+        row = db.get(Run, run.id)
+        if row is None:
+            raise ValueError(f"DB에 없는 실행입니다: {run.id}")
+        row.state = run.model_dump_json()
+        row.persona = run.input.persona
+        row.product_name = run.input.product_name
+        row.updated_at = run.updated_at
 
 
-def load_run(run_id: str) -> RunState | None:
-    try:
-        path = run_dir(run_id) / "state.json"
-    except ValueError:
-        return None
-    if not path.exists():
-        return None
-    return RunState.model_validate_json(path.read_text(encoding="utf-8"))
+def load_run(run_id: str, user_id: int | None = None) -> RunState | None:
+    """user_id를 주면 그 사용자의 실행일 때만 돌려준다."""
+    with session_scope() as db:
+        row = db.get(Run, run_id)
+        if row is None or (user_id is not None and row.user_id != user_id):
+            return None
+        return RunState.model_validate_json(row.state)
+
+
+def list_runs(user_id: int) -> list[RunState]:
+    """최근에 고친 순서."""
+    with session_scope() as db:
+        rows = db.scalars(select(Run).where(Run.user_id == user_id).order_by(Run.updated_at.desc()))
+        return [RunState.model_validate_json(row.state) for row in rows]
