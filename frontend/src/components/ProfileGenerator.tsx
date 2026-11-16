@@ -1,7 +1,7 @@
 import { useState, type ChangeEvent } from "react";
 import { api, withBase } from "../api";
 import type { ProfileResult } from "../types";
-import { Spinner } from "./icons";
+import { SparkleIcon, Spinner } from "./icons";
 
 export const MAX_PROFILE_IMAGES = 10; // backend/app/steps/profile.py MAX_PROFILE_IMAGES
 const ACCEPT = "image/png,image/jpeg,image/webp";
@@ -66,6 +66,7 @@ export default function ProfileGenerator({ product, initialPhotos, onGenerated, 
             <button
               type="button"
               onClick={() => setPhotos(photos.filter((_, j) => j !== i))}
+              disabled={busy}
               aria-label={`사진 ${i + 1} 빼기`}
               className="absolute right-1 top-1 rounded bg-white/90 px-1 text-xs text-gray-600 hover:text-danger"
             >
@@ -87,20 +88,28 @@ export default function ProfileGenerator({ product, initialPhotos, onGenerated, 
           </label>
         )}
       </div>
+      {busy && (
+        // 이미지 생성 중 카드와 같은 모양: 사진을 보고 규칙을 쓰는 동안
+        <div className="flex items-center justify-center gap-1.5 rounded-xl border border-dashed bg-white py-6 text-sm text-gray-500">
+          <Spinner className="h-4 w-4" /> 사진 {photos.length}장을 보고 제품 규칙을 만드는 중 (10~30초)
+        </div>
+      )}
       {error && <p className="text-xs text-danger">{error}</p>}
       <div className="flex gap-2">
         <button
           type="button"
           onClick={generate}
           disabled={busy || uploading || photos.length === 0}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-40"
+          className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-40"
         >
-          {busy ? "만드는 중… (10~30초)" : "AI로 제품 규칙 만들기"}
+          {busy ? <Spinner /> : <SparkleIcon />}
+          {busy ? "만드는 중…" : "AI로 제품 규칙 만들기"}
         </button>
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
+            disabled={busy}
             className="rounded-lg border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
           >
             취소
