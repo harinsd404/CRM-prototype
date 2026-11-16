@@ -16,6 +16,13 @@ interface Props {
   profile: ProductProfile | null;
   // 적지 않은 자리에 assets 기본 사진(Fold 공식 사진)을 쓰는지. Fold 프로필일 때만 (서버 uses_fold_photos와 같은 규칙)
   foldPhotos: boolean;
+  // 지금 사진 칸에 보이는 사진들 (컬러 라인업에서 색을 뽑을 때 쓴다)
+  onVisiblePhotos?: (photos: VisiblePhoto[]) => void;
+}
+
+export interface VisiblePhoto {
+  label: string;
+  url: string;
 }
 
 const ACCEPT = "image/png,image/jpeg,image/webp";
@@ -23,7 +30,16 @@ const EXTRA = "extra"; // 추가 사진을 올리는 중일 때 uploading 값
 
 /** ③ 이미지 생성 때 이미지 모델에 함께 보내는 공식 제품 사진(기본 이미지). 자리는 제품 프로필이 정한다. 자리마다 다른 사진을 올리거나 지울 수 있고,
  * 다른 각도·디테일 사진을 MAX_EXTRA_PRODUCT_IMAGES장까지 더 올릴 수 있다. 고를 때마다 서버가 해상도·장 수를 검사한다. */
-export default function ProductImagesField({ value, onChange, extras, onExtrasChange, baseline = null, profile, foldPhotos }: Props) {
+export default function ProductImagesField({
+  value,
+  onChange,
+  extras,
+  onExtrasChange,
+  baseline = null,
+  profile,
+  foldPhotos,
+  onVisiblePhotos,
+}: Props) {
   const [foldSlots, setFoldSlots] = useState<ProductImage[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +78,20 @@ export default function ProductImagesField({ value, onChange, extras, onExtrasCh
     if (choice === undefined) return withBase(slot.default_url);
     return choice === null ? null : withBase(`/api/uploads/${choice}`);
   };
+
+  // 보이는 사진 목록을 부모에 알린다 (내용이 바뀔 때만)
+  const visible: VisiblePhoto[] = [
+    ...slots.flatMap((slot) => {
+      const url = urlOf(slot);
+      return url ? [{ label: slot.label, url }] : [];
+    }),
+    ...extras.map((name, i) => ({ label: `추가 사진 ${i + 1}`, url: withBase(`/api/uploads/${name}`) })),
+  ];
+  const visibleKey = JSON.stringify(visible);
+  useEffect(() => {
+    onVisiblePhotos?.(JSON.parse(visibleKey));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleKey]);
 
   const set = (role: string, choice: string | null | undefined) => {
     const next = { ...value };

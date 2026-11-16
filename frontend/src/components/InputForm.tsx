@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import ColorLineupField from "./ColorLineupField";
 import PodsField, { podsValid } from "./PodsField";
-import ProductImagesField from "./ProductImagesField";
+import ProductImagesField, { type VisiblePhoto } from "./ProductImagesField";
 import ProfileField from "./ProfileField";
 
 interface Props {
@@ -134,6 +134,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
   };
 
   // AI 생성의 첫 후보: 지금 사진 칸에 있는 올린 사진들
+  const [visiblePhotos, setVisiblePhotos] = useState<VisiblePhoto[]>([]);
   const currentPhotos = [
     ...Object.values(fields.product_images ?? {}).filter((name): name is string => !!name),
     ...(fields.extra_product_images ?? []),
@@ -230,7 +231,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
           />
         </label>
         <div className="md:col-span-2">
-          <ColorLineupField value={fields.colors} onChange={(colors) => set("colors", colors)} />
+          <ColorLineupField value={fields.colors} onChange={(colors) => set("colors", colors)} photos={visiblePhotos} />
         </div>
       </div>
 
@@ -264,6 +265,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
         baseline={baseline}
         profile={fields.profile ?? null}
         foldPhotos={!fields.profile || fields.profile.device_noun.trim() === defaultProfile?.device_noun}
+        onVisiblePhotos={setVisiblePhotos}
       />
 
       {error && <p className="text-sm text-danger">{error}</p>}
