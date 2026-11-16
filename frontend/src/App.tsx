@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, setUnauthorizedHandler } from "./api";
 import ErrorMessage from "./components/ErrorMessage";
+import FeedbackPage from "./components/FeedbackPage";
+import FeedbackPanel from "./components/FeedbackPanel";
 import HtmlPreview from "./components/HtmlPreview";
 import InputForm from "./components/InputForm";
 import LoginForm from "./components/LoginForm";
@@ -24,7 +26,7 @@ function writeRunId(runId: string | null) {
 }
 
 // 실행이 없을 때 보여 줄 화면: 내 작업 목록 / 입력 폼
-type Home = { view: "list" } | { view: "new"; input: RunInput | null };
+type Home = { view: "list" } | { view: "new"; input: RunInput | null } | { view: "feedback" };
 
 export default function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined); // undefined = 확인 중, null = 로그인 필요
@@ -122,6 +124,12 @@ export default function App() {
             >
               새로 만들기
             </button>
+            <button
+              onClick={() => goHome({ view: "feedback" })}
+              className={!run && home.view === "feedback" ? "font-medium text-primary" : "text-gray-600 hover:text-gray-900"}
+            >
+              피드백
+            </button>
             <span className="text-gray-300">|</span>
             <span className="text-gray-500">{me.username}</span>
             <button onClick={logout} className="text-gray-500 hover:text-gray-900">
@@ -143,6 +151,8 @@ export default function App() {
         {!run ? (
           home.view === "list" ? (
             <RunList onOpen={openRun} onNew={(input) => goHome({ view: "new", input })} />
+          ) : home.view === "feedback" ? (
+            <FeedbackPage onOpenRun={openRun} />
           ) : (
             // key: 다른 입력으로 새로 만들기를 누르면 폼을 새로 채운다
             <InputForm key={JSON.stringify(home.input)} initial={home.input} onCreated={startRun} />
@@ -167,6 +177,8 @@ export default function App() {
             })}
 
             <HtmlPreview run={run} onChange={setRun} />
+
+            <FeedbackPanel run={run} />
 
             <footer className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-5">
               <p className="text-sm text-gray-500">

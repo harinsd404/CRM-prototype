@@ -209,3 +209,49 @@ export function isStepComplete(run: RunState, step: StepName): boolean {
   if (step === "image") return allSelected && selectedPodOrder(run).every((pod) => pod in slots);
   return allSelected;
 }
+
+/** 피드백 (backend/app/core/feedback.py). 템플릿별로 모인다 */
+export type FeedbackStep = "pod" | "copy" | "image" | "result";
+export type FeedbackSource = "manual" | "regenerate" | "revise";
+export type FeedbackStatus = "open" | "applied" | "dismissed";
+
+export const FEEDBACK_STEP_LABELS: Record<FeedbackStep, string> = {
+  pod: "① Pod 순서",
+  copy: "② 카피",
+  image: "③ 이미지",
+  result: "④ 최종 시안",
+};
+export const FEEDBACK_SOURCE_LABELS: Record<FeedbackSource, string> = {
+  manual: "직접 남김",
+  regenerate: "다시 생성 요청",
+  revise: "수정 요청",
+};
+export const FEEDBACK_STATUS_LABELS: Record<FeedbackStatus, string> = {
+  open: "확인 전",
+  applied: "반영함",
+  dismissed: "보류",
+};
+
+export interface Feedback {
+  id: number;
+  template_id: number | null;
+  template_name: string | null;
+  run_id: string;
+  persona: string;
+  username: string;
+  step: FeedbackStep;
+  pod: string | null;
+  content: string;
+  context: string; // 피드백을 남길 때 선택돼 있던 결과
+  source: FeedbackSource;
+  status: FeedbackStatus;
+  created_at: string;
+  mine: boolean;
+}
+
+/** 피드백 목록 조건. template = 템플릿 id, "none" = 템플릿 없음, null = 전체 */
+export interface FeedbackFilter {
+  template: number | "none" | null;
+  status: FeedbackStatus | null;
+  source: FeedbackSource | null;
+}

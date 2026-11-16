@@ -527,7 +527,7 @@ crm-20261027-091857-365eae.zip
 
 | 경로 | 내용 |
 |---|---|
-| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `templates`·`template_pods`·`template_images`(제품 템플릿과 Pod·기본 이미지, 모두가 함께 씀. 처음 켤 때 Galaxy Z Fold와 `assets/product` 사진을 넣는다. 사진 파일은 `data/uploads/`) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`, 불러온 `template_id`) |
+| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `templates`·`template_pods`·`template_images`(제품 템플릿과 Pod·기본 이미지, 모두가 함께 씀. 처음 켤 때 Galaxy Z Fold와 `assets/product` 사진을 넣는다. 사진 파일은 `data/uploads/`) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`, 불러온 `template_id`) · `feedback`(피드백, 아래) |
 | `backend/data/runs/{run_id}/product/` | 실행을 만들 때 복사한 제품 사진 |
 | `backend/data/runs/{run_id}/images/` | 생성된 이미지 (`.png`, placeholder 모드는 `.svg`) |
 | `backend/data/runs/{run_id}/html_input.json` | 7-1 |
@@ -550,3 +550,19 @@ crm-20261027-091857-365eae.zip
 | 422 | 입력·수정본이 스키마와 다름, 스펙이 하나도 없음 | `"수정 내용 형식이 맞지 않습니다: …"` |
 | 429 | 1분 10회 초과, 하루 이미지 한도 초과 | `"오늘 이미지 생성 한도를 넘습니다 (사용 98장 + 이번 3장 > 한도 100장). …"` |
 | 502 | 모델 호출이 (재시도 후에도) 모든 안에서 실패 | `"'image' 생성에 실패했습니다: …"` |
+
+
+## 피드백 — `feedback` 테이블
+
+만든 CRM에서 마음에 들지 않는 부분. 실행이 불러온 템플릿(`template_id`)별로 모아 프롬프트 개선과 개발자의 로직 개선에 쓴다.
+
+| 칸 | 값 | 설명 |
+|---|---|---|
+| `step` | `pod` `copy` `image` `result` | 어느 단계에 대한 피드백인지 (`result` = ④ 최종 시안) |
+| `pod` | string \| null | 특정 Pod에 대한 것이면 그 이름 |
+| `content` | string (최대 1000자) | 피드백 내용 |
+| `context` | string | 남길 때 선택돼 있던 결과(Pod 순서, 헤드·바디, 이미지 콘셉트·주소). 코드가 채운다 |
+| `source` | `manual` `regenerate` `revise` | 직접 남김 / ①~③ 다시 생성 때 적은 요청 / 카피·이미지 수정 요청 (뒤의 둘은 자동으로 쌓인다) |
+| `status` | `open` `applied` `dismissed` | 확인 전 / 반영함 / 보류. 템플릿을 함께 쓰므로 누구나 바꿀 수 있다 |
+
+API: `POST·GET /api/runs/{id}/feedback`(내 실행) · `GET /api/feedback?template_id=&no_template=&status=&source=`(모든 사용자) · `GET /api/feedback/export`(같은 조건, CSV) · `PATCH /api/feedback/{id}`(`{status}`) · `DELETE /api/feedback/{id}`(내가 남긴 것만).

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import auth, product_images, runs, templates
+from app.api import auth, feedback, product_images, runs, templates
 from app.config import BACKEND_DIR, settings
 from app.core.auth import SESSION_COOKIE, user_from_token
 from app.core.db import init_db
@@ -59,6 +59,7 @@ app.add_middleware(StripBasePath, base=settings.base_path)
 app.include_router(auth.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
+app.include_router(feedback.router, prefix="/api")
 # 라우터를 마운트보다 먼저 등록해야 POST /api/uploads가 아래 /api/uploads 마운트에 가려지지 않는다
 app.include_router(product_images.router, prefix="/api")
 # 생성된 이미지: /api/files/{run_id}/images/{파일명}

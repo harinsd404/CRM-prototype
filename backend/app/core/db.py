@@ -100,6 +100,25 @@ class Run(Base):
     updated_at: Mapped[datetime] = mapped_column(index=True)
 
 
+class Feedback(Base):
+    """사용자가 만든 CRM에서 마음에 들지 않는 부분. 템플릿별로 모아 프롬프트 개선(직접 수정·AI 개선안)과
+    개발자의 로직 개선에 쓴다. source: manual(직접 남김) / regenerate(다시 생성 요청) / revise(수정 요청)."""
+
+    __tablename__ = "feedback"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int | None] = mapped_column(ForeignKey("templates.id", ondelete="SET NULL"), index=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    step: Mapped[str] = mapped_column(String(10))  # pod / copy / image / result(최종 시안)
+    pod: Mapped[str | None] = mapped_column(String(30))
+    content: Mapped[str] = mapped_column(Text)
+    context: Mapped[str] = mapped_column(Text, default="")  # 피드백을 남길 때 선택돼 있던 결과 (코드가 채움)
+    source: Mapped[str] = mapped_column(String(10), default="manual")
+    status: Mapped[str] = mapped_column(String(10), default="open")  # open / applied / dismissed
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now, index=True)
+
+
 settings.db_path.parent.mkdir(parents=True, exist_ok=True)
 engine = create_engine(f"sqlite:///{settings.db_path}", connect_args={"check_same_thread": False})
 

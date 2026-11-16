@@ -18,6 +18,7 @@ from app.core.db import User
 from app.core.render import build_html_input, render_crm
 from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE
 from app.core import templates
+from app.core.feedback import FeedbackIn, add_feedback
 from app.core.templates import TemplateNameTaken, TemplateOut, get_template
 from app.core.state import MAIN_SLOT, STEP_ORDER, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
@@ -51,6 +52,14 @@ def _get_run(run_id: str, user: User) -> RunState:
     if run is None:
         raise HTTPException(404, f"실행을 찾을 수 없습니다: {run_id}")
     return run
+
+
+def _log_request(run: RunState, user: User, step: str, pod: str | None, text: str, source: str) -> None:
+    """다시 생성·수정 요청도 '마음에 들지 않는 부분'이라 템플릿별 피드백으로 쌓는다. 실패해도 생성은 계속한다."""
+    try:
+        add_feedback(run, user.id, FeedbackIn(step=step, pod=pod, content=text[:1000]), source=source)
+    except Exception:
+        logger.warning("요청을 피드백으로 저장하지 못했습니다", exc_info=True)
 
 
 def _get_step(step_name: str) -> Step:
@@ -170,6 +179,8 @@ async def generate_step(
     guard.check_generate_rate()
     if step_name == "image":
         guard.check_image_budget(len(slots) * settings.num_options)
+    if feedback:  # 다시 만들기 전 결과에 대한 요청이라 생성 전에 남긴다
+        _log_request(run, user, step_name, slot, feedback, "regenerate")
 
     with guard.run_lock(run_id):
         if step_name == "image":
@@ -272,6 +283,8 @@ async def revise_option(run_id: str, step_name: str, body: ReviseRequest, user: 
     guard.check_generate_rate()
     if isinstance(step, ImageStep):
         guard.check_image_budget(1)
+    pod = body.slot if isinstance(step, ImageStep) else (body.pods[0] if len(body.pods) == 1 else None)
+    _log_request(run, user, step_name, pod, request, "revise")
 
     with guard.run_lock(run_id):
         before = _snapshot(run)

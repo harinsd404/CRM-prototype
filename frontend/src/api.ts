@@ -1,4 +1,8 @@
 import type {
+  Feedback,
+  FeedbackFilter,
+  FeedbackStatus,
+  FeedbackStep,
   ImageCheck,
   Me,
   ProductImage,
@@ -41,6 +45,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+function feedbackQuery(filter: FeedbackFilter) {
+  const params = new URLSearchParams();
+  if (filter.template === "none") params.set("no_template", "true");
+  else if (filter.template != null) params.set("template_id", String(filter.template));
+  if (filter.status) params.set("status", filter.status);
+  if (filter.source) params.set("source", filter.source);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 export const api = {
   login: (username: string, password: string) =>
     request<Me>("/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
@@ -64,6 +78,16 @@ export const api = {
   // 실행의 제품명·컬러·Pod·제품 사진을 템플릿으로 저장. template_id를 주면 덮어쓴다
   saveRunAsTemplate: (runId: string, body: { template_id: number | null; name: string | null }) =>
     request<Template>(`/runs/${runId}/template`, { method: "POST", body: JSON.stringify(body) }),
+
+  // 피드백: 실행에서 남기기·보기, 템플릿별 모아 보기(모든 사용자), 상태 바꾸기, CSV
+  addFeedback: (runId: string, body: { step: FeedbackStep; pod: string | null; content: string }) =>
+    request<Feedback>(`/runs/${runId}/feedback`, { method: "POST", body: JSON.stringify(body) }),
+  runFeedback: (runId: string) => request<Feedback[]>(`/runs/${runId}/feedback`),
+  listFeedback: (filter: FeedbackFilter) => request<Feedback[]>(`/feedback${feedbackQuery(filter)}`),
+  setFeedbackStatus: (id: number, status: FeedbackStatus) =>
+    request<{ ok: boolean }>(`/feedback/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+  deleteFeedback: (id: number) => request<{ ok: boolean }>(`/feedback/${id}`, { method: "DELETE" }),
+  feedbackCsvUrl: (filter: FeedbackFilter) => `${BASE}/api/feedback/export${feedbackQuery(filter)}`,
 
   // 고른 제품 사진의 해상도·장 수·필수 자리 검사 (경고만)
   checkProductImages: (product_images: RunInput["product_images"], extra_product_images: string[]) =>
