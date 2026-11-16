@@ -10,7 +10,7 @@ interface Props {
   product: { product_name: string; colors: string; pods: { name: string; spec: string }[] };
   currentPhotos: string[]; // 지금 사진 칸에 있는 올린 사진들 (AI 생성의 첫 후보)
   onGenerated: (result: ProfileResult) => void;
-  onEdit?: (profile: ProductProfile) => void; // 고급 모드: 이번 실행의 규칙을 항목 단위로 고친다
+  onEdit?: (profile: ProductProfile) => void; // 이번 실행의 규칙을 항목 단위로 고친다 ('자세히 보기' 안에서 한 번 더 눌러 연다)
   warnings: string[]; // AI가 사진을 보고 남긴 경고
   newProduct: boolean; // 템플릿 없이 새 제품: 아직 규칙이 없다 (사진 칸에서 AI로 만든다)
 }
@@ -20,6 +20,7 @@ interface Props {
 export default function ProfileField({ profile, source, product, currentPhotos, onGenerated, onEdit, warnings, newProduct }: Props) {
   const [open, setOpen] = useState(false); // AI로 만들기 칸
   const [details, setDetails] = useState(false);
+  const [editing, setEditing] = useState(false); // 자세히 보기 안에서 '이번 실행만 고치기'를 눌렀을 때
 
   return (
     <fieldset className="space-y-3">
@@ -47,18 +48,34 @@ export default function ProfileField({ profile, source, product, currentPhotos, 
               제품 상태 {profile.states.map((s) => s.label).join(" · ")} / 사진 자리{" "}
               {profile.photo_slots.map((s) => s.label).join(" · ")}
             </p>
-            <button type="button" onClick={() => setDetails(!details)} className="mt-1 text-xs text-gray-500 hover:text-gray-900">
-              {details ? "자세히 접기" : onEdit ? "자세히 보기 · 이번 실행만 고치기" : "자세히 보기"}
+            <button
+              type="button"
+              onClick={() => {
+                setDetails(!details);
+                setEditing(false);
+              }}
+              className="mt-1 text-xs text-gray-500 hover:text-gray-900"
+            >
+              {details ? "자세히 접기" : "자세히 보기"}
             </button>
-            {details && onEdit && (
+            {details && editing && onEdit && (
               <div className="mt-2">
-                <p className="mb-2 text-xs text-gray-500">
-                  고급 모드: 여기서 고친 규칙은 이번 실행에만 쓰입니다. 템플릿에 남기려면 실행 화면에서 템플릿으로 저장하세요.
-                </p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-xs text-gray-500">
+                    여기서 고친 규칙은 이번 실행에만 쓰입니다. 템플릿에 남기려면 실행 화면에서 템플릿으로 저장하거나, 상단 '템플릿'에서 고치세요.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setEditing(false)}
+                    className="shrink-0 rounded-lg border bg-white px-3 py-1 text-xs hover:bg-gray-100"
+                  >
+                    고치기 닫기
+                  </button>
+                </div>
                 <ProfileEditor value={profile} onChange={onEdit} />
               </div>
             )}
-            {details && !onEdit && (
+            {details && !editing && (
               <div className="mt-2 space-y-2 text-xs text-gray-600">
                 <pre className="whitespace-pre-wrap rounded bg-gray-50 p-2"># Device{"\n"}{profile.device_rules}</pre>
                 {profile.states.map((state) => (
@@ -69,6 +86,15 @@ export default function ProfileField({ profile, source, product, currentPhotos, 
                   </pre>
                 ))}
                 {profile.copy_terms && <p>카피 공식 표기: {profile.copy_terms}</p>}
+                {onEdit && (
+                  <button
+                    type="button"
+                    onClick={() => setEditing(true)}
+                    className="rounded-lg border bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-100"
+                  >
+                    이번 실행만 고치기 (프롬프트 항목 단위)
+                  </button>
+                )}
               </div>
             )}
           </>

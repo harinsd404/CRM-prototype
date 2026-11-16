@@ -269,7 +269,7 @@ def template_data_from_run(run: RunState, name: str, base: TemplateOut | None) -
     )
 
 
-# ── 제품 프로필 버전 (고급 모드) ─────────────────────────────────────────
+# ── 제품 프로필 버전 (템플릿 메뉴) ─────────────────────────────────────────
 
 
 class ProfileVersionOut(BaseModel):
@@ -323,7 +323,7 @@ def list_profile_versions(template_id: int) -> list[ProfileVersionOut]:
 def save_profile(
     template_id: int, profile: ProductProfile, user_id: int, note: str, base_version: int | None, source: str = "manual"
 ) -> int | None:
-    """고급 모드에서 고친 프로필을 새 active 버전으로. 만든 버전 번호, 지금 버전과 같아 만들지 않았으면 None.
+    """템플릿 메뉴에서 고친 프로필을 새 active 버전으로. 만든 버전 번호, 지금 버전과 같아 만들지 않았으면 None.
     base_version(편집을 시작할 때의 버전) 뒤로 다른 사람이 바꿨으면 ProfileConflict."""
     with session_scope() as db:
         template = db.get(Template, template_id)

@@ -24,7 +24,7 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-/** 고급 모드: 템플릿의 제품 프로필(프롬프트의 제품별 블록)을 항목 단위로 고치고, 버전을 되돌리고,
+/** 템플릿 메뉴: 템플릿의 제품 프로필(프롬프트의 제품별 블록)을 항목 단위로 고치고, 버전을 되돌리고,
  * 쌓인 피드백으로 AI가 낸 개선안을 승인·거절한다. 템플릿은 모두가 함께 쓰므로 저장하면 모든 사용자에게 바로 쓰인다. */
 export default function TemplatesPage() {
   const [list, setList] = useState<TemplateSummary[]>([]);
@@ -124,7 +124,7 @@ export default function TemplatesPage() {
     <section className="space-y-5 rounded-xl border bg-white p-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="font-semibold">템플릿 제품 규칙 (고급 모드)</h2>
+          <h2 className="font-semibold">템플릿 제품 규칙</h2>
           <p className="mt-1 text-sm text-gray-500">
             프롬프트의 제품별 블록을 항목 단위로 고칩니다. 공통 골격(역할·레이아웃·안전 규칙)은 코드에 있어 여기서 고치지
             않습니다. 저장하면 모든 사용자에게 바로 쓰이고, 예전 버전으로 언제든 되돌릴 수 있습니다.

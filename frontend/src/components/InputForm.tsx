@@ -19,7 +19,6 @@ import ProfileGenerator from "./ProfileGenerator";
 interface Props {
   initial: RunInput | null; // 다시 시작하기·다른 페르소나로: 그 실행의 입력을 채워 둔다
   onCreated: (run: RunState) => void;
-  advanced: boolean; // 고급 모드: 이번 실행의 제품 규칙을 항목 단위로 고칠 수 있다
 }
 
 const fieldClass = "mt-1 w-full rounded-lg border bg-white p-2.5 text-sm";
@@ -54,7 +53,7 @@ const templateBaseline = (template: Template, fallback: ProductProfile): Baselin
   label: "템플릿 사진",
 });
 
-export default function InputForm({ initial, onCreated, advanced }: Props) {
+export default function InputForm({ initial, onCreated }: Props) {
   const [fields, setFields] = useState<Fields>(() => (initial ? { ...EMPTY, ...initial } : EMPTY));
   const [rows, setRows] = useState<TemplatePod[]>(() => initial?.pods.map((pod) => ({ ...pod, enabled: true })) ?? []);
   const [templates, setTemplates] = useState<TemplateSummary[] | null>(null);
@@ -274,7 +273,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
         warnings={profileWarnings}
         newProduct={newProduct}
         onEdit={
-          advanced && profile
+          profile
             ? (edited) => {
                 setFields((prev) => ({ ...prev, profile: edited }));
                 setProfileSource("이번 실행에서 고침 (템플릿에는 저장되지 않음)");

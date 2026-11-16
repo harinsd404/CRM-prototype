@@ -52,7 +52,7 @@ function Section({ title, hint, children, open }: { title: string; hint: string;
 
 const rows = (text: string, min = 2) => Math.max(min, Math.min(14, text.split("\n").length + 1));
 
-/** 고급 모드: 제품 프로필(프롬프트의 제품별 블록)을 항목 단위로 고친다. 공통 골격은 코드(prompts/*.md)에 있어 여기서 고치지 않는다. */
+/** 제품 프로필(프롬프트의 제품별 블록)을 항목 단위로 고친다. 공통 골격은 코드(prompts/*.md)에 있어 여기서 고치지 않는다. */
 export default function ProfileEditor({ value, onChange, lockSlots = false }: Props) {
   const set = <K extends keyof ProductProfile>(key: K, v: ProductProfile[K]) => onChange({ ...value, [key]: v });
   const setSlot = (i: number, patch: Partial<PhotoSlot>) =>

@@ -58,7 +58,7 @@ def update_template(template_id: int, body: TemplateData, user: CurrentUser) -> 
     return template
 
 
-# ── 고급 모드: 제품 프로필 직접 수정·버전·피드백 개선안 ─────────────────────
+# ── 템플릿 메뉴: 제품 프로필 직접 수정·버전·피드백 개선안 ─────────────────────
 
 
 def _template_or_404(template_id: int) -> TemplateOut:
@@ -86,9 +86,9 @@ class SaveProfileResult(BaseModel):
 
 @router.put("/{template_id}/profile", response_model=SaveProfileResult)
 def save_profile(template_id: int, body: SaveProfileRequest, user: CurrentUser) -> SaveProfileResult:
-    """고급 모드에서 고친 프로필을 새 버전으로 저장한다 (모든 사용자에게 바로 쓰인다)."""
+    """템플릿 메뉴에서 고친 프로필을 새 버전으로 저장한다 (모든 사용자에게 바로 쓰인다)."""
     _template_or_404(template_id)
-    note = body.note.strip() or "고급 모드에서 직접 고침"
+    note = body.note.strip() or "템플릿 메뉴에서 직접 고침"
     try:
         version = templates.save_profile(template_id, body.profile, user.id, note, body.base_version)
     except ProfileConflict as e:

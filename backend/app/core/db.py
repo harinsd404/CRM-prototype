@@ -89,7 +89,7 @@ class TemplateImage(Base):
 class ProfileVersion(Base):
     """템플릿의 제품 프로필(프롬프트의 제품별 블록) 버전. active가 지금 쓰는 것, archived는 예전 것(되돌리기용),
     proposed는 피드백을 보고 AI가 낸 개선안(승인 전), rejected는 거절한 개선안.
-    source: seed / ai(제품 사진으로 생성) / manual(고급 모드에서 고침) / feedback(피드백 개선안) / run(실행을 템플릿으로 저장)."""
+    source: seed / ai(제품 사진으로 생성) / manual(템플릿 메뉴에서 고침) / feedback(피드백 개선안) / run(실행을 템플릿으로 저장)."""
 
     __tablename__ = "profile_versions"
 

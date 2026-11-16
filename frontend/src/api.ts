@@ -103,7 +103,7 @@ export const api = {
       body: JSON.stringify({ product_images, extra_product_images, profile }),
     }),
 
-  // 고급 모드: 템플릿의 제품 프로필 버전·직접 수정·피드백 개선안
+  // 템플릿 메뉴: 템플릿의 제품 프로필 버전·직접 수정·피드백 개선안
   profileVersions: (templateId: number) => request<ProfileVersion[]>(`/templates/${templateId}/profile/versions`),
   // 만든 버전 (지금 규칙과 같아 만들지 않았으면 null). base_version 뒤로 다른 사람이 바꿨으면 409
   saveProfile: (templateId: number, profile: ProductProfile, note: string, base_version: number | null) =>
