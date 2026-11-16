@@ -15,7 +15,7 @@ from app.core.domain import (
 )
 from app.core.profile import LEGACY_STATES, ProductProfile
 from app.core.prompts import PROMPT_DIR
-from app.core.state import RunState, SlotState
+from app.core.state import RunState, SlotState, strip_hex
 from app.core.store import EXTRA_PREFIX, product_image_dir, run_dir
 from app.providers.image import Reference, get_image_provider
 from app.steps.base import OnOption, Step, invoke_structured, option_label, with_feedback
@@ -90,6 +90,7 @@ def normalize_brief(brief: ImageBrief, layout: str, profile: ProductProfile) -> 
         brief.screen_content = SCREEN_HIDDEN
     if brief.image_type in ("Base", "배경 연출"):
         brief.person_hand, brief.face = "없음", "no person"
+    brief.color = strip_hex(brief.color)  # 헥스는 코드가 입력에서 찾아 붙인다
 
 
 def check_brief(brief: ImageBrief, layout: str, colors: list[str]) -> list[str]:
@@ -164,6 +165,18 @@ def _model_sections() -> dict[str, str]:
     return {name: body.strip() for name, body in zip(parts[1::2], parts[2::2])}
 
 
+def _color_line(run: RunState, color: str) -> str:
+    """헥스가 있으면 기준 톤으로 붙인다. 그대로 칠하지 말고 장면 조명·배경에 맞춰 자연스럽게 변하게 둔다."""
+    code = run.input.color_hex(color)
+    if not code:
+        return color
+    return (
+        f"{color} — reference tone {code}. Keep this hue family so the color is clearly recognizable, "
+        "but let it shift slightly with the scene's lighting, shadows and background reflections "
+        "so it looks naturally photographed, not flat-filled with the exact code."
+    )
+
+
 def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) -> str:
     """공통 골격(image_model.md)과 제품 프로필의 제품별 블록 중 이 이미지에 필요한 것만 골라 붙이고,
     끝에 이 안의 연출안(Input Data)을 붙인다."""
@@ -184,7 +197,7 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
     data = [
         f"- Pod : {pod}",
         f"- 타겟 페르소나 : {run.input.persona}",
-        f"- 제품 컬러 : {brief.color}",
+        f"- 제품 컬러 : {_color_line(run, brief.color)}",
         f"- 제품 상태 : {state.key} ({state.label}), {_ORIENTATIONS[brief.orientation]}",
         f"- 장면 : {brief.scene}",
         f"- 소품 : {brief.props}",

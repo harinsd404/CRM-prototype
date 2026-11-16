@@ -37,6 +37,29 @@ class PodInput(BaseModel):
         return self
 
 
+_HEX = re.compile(r"\(?\s*#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})\s*\)?")
+
+
+def normalize_hex(code: str) -> str:
+    code = code.lstrip("#").upper()
+    return "#" + ("".join(c * 2 for c in code) if len(code) == 3 else code)
+
+
+def strip_hex(text: str) -> str:
+    return _HEX.sub("", text).strip()
+
+
+def parse_colors(colors: str) -> list[tuple[str, str | None]]:
+    """'라벤더 #C8B6E2, 그라파이트' → [('라벤더', '#C8B6E2'), ('그라파이트', None)]. 헥스는 이름 뒤에 선택으로 붙인다."""
+    result = []
+    for item in colors.split(","):
+        match = _HEX.search(item)
+        name = strip_hex(item)
+        if name:
+            result.append((name, normalize_hex(match.group(1)) if match else None))
+    return result
+
+
 class RunInput(BaseModel):
     template_id: int | None = Field(default=None, description="불러온 템플릿 (없으면 직접 입력)")
     target_id: str = Field(default="P1", description="타겟 구분 (P1/P2/P3)")
@@ -105,7 +128,13 @@ class RunInput(BaseModel):
 
     @property
     def color_list(self) -> list[str]:
-        return [c.strip() for c in self.colors.split(",") if c.strip()]
+        """컬러 이름만 (헥스 제외)."""
+        return [name for name, _ in parse_colors(self.colors)]
+
+    def color_hex(self, name: str) -> str | None:
+        """이름에 붙여 적은 헥스 코드 (없으면 None)."""
+        target = strip_hex(name)
+        return next((code for n, code in parse_colors(self.colors) if n == target), None)
 
     def format(self) -> str:
         """모든 프롬프트에 공통으로 들어가는 [입력 데이터] 블록."""
@@ -115,7 +144,7 @@ class RunInput(BaseModel):
                 f"- 타겟 페르소나 : {self.persona}",
                 f"- 소구 강도(무드) : {self.mood}",
                 f"- 제품명 : {self.product_name}",
-                f"- 컬러 라인업 : {self.colors}",
+                f"- 컬러 라인업 : {', '.join(self.color_list)}",
                 "- Pod별 스펙(Fact) :",
                 specs,
             ]

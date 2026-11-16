@@ -10,6 +10,7 @@ import type {
   TemplatePod,
   TemplateSummary,
 } from "../types";
+import ColorLineupField from "./ColorLineupField";
 import PodsField, { podsValid } from "./PodsField";
 import ProductImagesField from "./ProductImagesField";
 import ProfileField from "./ProfileField";
@@ -147,6 +148,10 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
       setError("Pod를 확인해 주세요. 체크한 Pod 중 하나 이상은 스펙이 있어야 합니다.");
       return;
     }
+    if (!fields.colors.trim()) {
+      setError("컬러 라인업을 하나 이상 입력해 주세요.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -224,10 +229,9 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
             className={fieldClass}
           />
         </label>
-        <label className="block">
-          <span className="text-sm font-medium">컬러 라인업 (쉼표로 구분)</span>
-          <input value={fields.colors} onChange={(e) => set("colors", e.target.value)} required className={fieldClass} />
-        </label>
+        <div className="md:col-span-2">
+          <ColorLineupField value={fields.colors} onChange={(colors) => set("colors", colors)} />
+        </div>
       </div>
 
       <PodsField rows={rows} onChange={setRows} onReset={template ? () => setRows(toRows(template)) : undefined} />

@@ -10,6 +10,7 @@ import RunList from "./components/RunList";
 import SaveTemplateDialog from "./components/SaveTemplateDialog";
 import StepPanel from "./components/StepPanel";
 import TemplatesPage from "./components/TemplatesPage";
+import { ColorChips } from "./components/ColorLineupField";
 import Stepper from "./components/Stepper";
 import { Spinner } from "./components/icons";
 import { STEP_ORDER, isStepComplete, type Me, type RunInput, type RunState } from "./types";
@@ -203,7 +204,7 @@ export default function App() {
                 <span className="font-semibold">{run.input.target_id}</span> {run.input.persona} · 소구 강도 {run.input.mood}
               </p>
               <p className="mt-1 text-gray-600">
-                {run.input.product_name} · {run.input.colors}
+                {run.input.product_name} · <ColorChips value={run.input.colors} />
               </p>
             </section>
 

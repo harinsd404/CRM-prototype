@@ -17,6 +17,7 @@ from app.config import settings
 from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES
 from app.core.profile import FOLD_PROFILE, PhotoSlot, ProductProfile, ProductState
 from app.core.prompts import load_prompt
+from app.core.state import parse_colors
 from app.core.store import upload_path
 from app.llm import get_chat_model
 
@@ -81,7 +82,7 @@ async def _ask(request: ProfileRequest) -> ProfileDraft:
     system, human = load_prompt("profile").format_messages(
         example=FOLD_PROFILE.model_dump_json(indent=1),
         product_name=request.product_name,
-        colors=request.colors or "(없음)",
+        colors=", ".join(name for name, _ in parse_colors(request.colors)) or "(없음)",
         pods=pods or "  (없음)",
         count=str(len(request.images)),
     )
@@ -107,7 +108,7 @@ def _mock_draft(request: ProfileRequest) -> ProfileDraft:
                     shows_screen=False, orientation="any", photos=["front"],
                 )
             ],
-            reference_color=(request.colors.split(",")[0].strip() if request.colors else ""),
+            reference_color=next((name for name, _ in parse_colors(request.colors)), ""),
         ),
         photo_assignments=[PhotoAssignment(image_index=1, slot="front")],
         pod_visuals=[PodVisual(pod=pod.name, visual=f"[예시] {pod.name}이 돋보이는 장면") for pod in request.pods],

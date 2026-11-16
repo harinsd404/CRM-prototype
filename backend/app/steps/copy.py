@@ -179,7 +179,7 @@ class CopyStep(TextStep):
         return copy.model_copy(update={"pods": [revised.get(p.pod, p) for p in copy.pods]})
 
     def postprocess(self, run: RunState, slot: str, content: CopyOption) -> list[str]:
-        sources = {pod.name: f"{pod.spec} {run.input.product_name} {run.input.colors}" for pod in run.input.pods}
+        sources = {pod.name: f"{pod.spec} {run.input.product_name} {' '.join(run.input.color_list)}" for pod in run.input.pods}
         return check_copy(content, [item["pod"] for item in self._plan(run)], sources)
 
     def mock_option(self, run: RunState, slot: str, angle: str, index: int) -> CopyOption:
