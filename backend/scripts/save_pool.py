@@ -13,7 +13,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.config import settings  # noqa: E402
-from app.core.domain import POD_ENGLISH  # noqa: E402
 from app.core.store import load_run, run_dir  # noqa: E402
 from app.providers.image import pool_ratio_tag  # noqa: E402
 
@@ -28,7 +27,7 @@ def main() -> None:
         options = [slot.selected_option] if selected_only else slot.options
         for option in filter(None, options):
             source = run_dir(run.id) / "images" / Path(option.content["image_url"]).name
-            folder = settings.image_pool_dir / POD_ENGLISH[pod]
+            folder = settings.image_pool_dir / run.input.pod(pod).key
             folder.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, folder / f"{pool_ratio_tag(option.content['brief']['ratio'])}_{source.name}")
             saved += 1

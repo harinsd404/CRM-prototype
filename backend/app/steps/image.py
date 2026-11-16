@@ -11,7 +11,6 @@ from app.core.domain import (
     LAYOUT_DESCRIPTIONS,
     LAYOUT_RATIOS,
     NO_SAFE_ZONE,
-    POD_VISUAL_DEFAULTS,
     Ratio,
 )
 from app.core.prompts import PROMPT_DIR
@@ -218,7 +217,7 @@ class ImageStep(Step):
             "pod": slot,
             "layout": f"{layout} ({LAYOUT_DESCRIPTIONS[layout]})",
             "allowed_ratios": " / ".join(LAYOUT_RATIOS[layout]),
-            "visual_default": POD_VISUAL_DEFAULTS[slot],
+            "visual_default": run.input.pod(slot).visual.strip() or "제품이 돋보이는 장면 (입력 데이터에 맞게)",
             "safe_zone_rule": safe_zone_rule,
             "headline": copy["headline"],
             "body": copy["body"],
@@ -272,7 +271,7 @@ class ImageStep(Step):
             ratio=brief.ratio,
             label=f"{slot} · {brief.concept}",
             seed=random.randint(0, 2**31 - 1),
-            pod=slot,
+            pod=run.input.pod(slot).key,
         )
         return ImageOption(brief=brief, prompt=prompt, image_url=f"/api/files/{run.id}/images/{path.name}")
 
@@ -287,7 +286,7 @@ class ImageStep(Step):
             images,
             ratio=content.brief.ratio,
             seed=random.randint(0, 2**31 - 1),
-            pod=slot,
+            pod=run.input.pod(slot).key,
         )
         return ImageOption(
             brief=content.brief,

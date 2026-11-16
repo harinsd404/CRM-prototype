@@ -3,7 +3,6 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from app.core.domain import POD_ENGLISH
 from app.core.state import RunState
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates"
@@ -24,7 +23,7 @@ def build_html_input(run: RunState) -> dict[str, Any]:
                 "pod": pod,
                 "eyebrow": pod,
                 "layout": item["layout"],
-                "img": f"{run.input.target_id}_{rank}_{POD_ENGLISH[pod]}.png",
+                "img": f"{run.input.target_id}_{rank}_{run.input.pod(pod).key}.png",
                 "img_ratio": image["brief"]["ratio"],
                 "headline": copy.get("headline", ""),
                 "body": copy.get("body", ""),

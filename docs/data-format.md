@@ -22,7 +22,7 @@
 
 | 이름 | 값 | 설명 |
 |---|---|---|
-| `PodName` | `디자인` `디스플레이` `성능` `카메라` `Now nudge` | 삼성닷컴 Pod. 이 순서가 기본 순서 |
+| Pod 이름 | string (최대 30자) | 템플릿·입력마다 다르다 (Fold 기본 템플릿: `디자인` `디스플레이` `성능` `카메라` `Now nudge`). `RunInput.pods` 순서가 기본 순서. 한 실행에 최대 10개 |
 | `Layout` | `L1` ~ `L5` | 아래 표 |
 | `Mood` | `HOT` `WARM` `COLD` | 소구 강도 (원본 P1에서는 "무드") |
 | `Ratio` | `1:1` `4:3` `16:9` | 이미지 화면비 |
@@ -46,10 +46,15 @@
 | `target_id` | string | – (기본 `"P1"`) | 타겟 구분. 최종 이미지 파일명(`P1_1_design.png`)에 쓰인다 |
 | `persona` | string | ✔ | 타겟 페르소나(관심사). 빈 문자열 불가 |
 | `mood` | `Mood` | ✔ | 소구 강도 |
-| `used_first_pod` | `PodName` \| null | – | 앞선 타겟에서 이미 1순위로 쓴 Pod. ①에서 1순위로 다시 쓰면 경고 |
+| `template_id` | int \| null | – | 불러온 제품 템플릿 id (없으면 직접 입력) |
+| `used_first_pod` | string \| null | – | 앞선 타겟에서 이미 1순위로 쓴 Pod. ①에서 1순위로 다시 쓰면 경고. `pods`에 없는 이름이면 null로 바꾼다 |
 | `product_name` | string | ✔ | 영문 공식 제품명 |
 | `colors` | string | ✔ | 컬러 라인업, 쉼표로 구분. ③에서 제품 색은 이 중 하나여야 한다 |
-| `specs` | `{PodName: string}` | ✔ | Pod별 스펙(Fact). **하나 이상은 내용이 있어야 함** (없으면 422). 카피의 팩트체크 근거는 이 원문과 대조된다 |
+| `pods` | `PodInput[]` | ✔ | 이번에 쓰는 Pod, **기본 순서대로** 1~10개. 이름·영문 이름이 겹치면 422. 스펙은 **하나 이상 내용이 있어야 함** (없으면 422) |
+| `pods[].name` | string | ✔ | Pod 이름. eyebrow와 ③ 슬롯 이름으로 그대로 쓴다 |
+| `pods[].key` | string | – | 영문 이름(소문자·숫자·`_`·`-`). 최종 이미지 파일명(`P1_1_design.png`)에 쓴다. 비우면 `pod1`, `pod2` … |
+| `pods[].spec` | string | – | Pod별 스펙(Fact). 카피의 팩트체크 근거는 이 원문과 대조된다 |
+| `pods[].visual` | string | – | ③ 이미지 기본 연출 방향 |
 | `product_images` | `{자리: string \| null}` | – (기본 `{}`) | 공식 제품 사진을 바꾸거나 지운 자리만. 자리 = `closed_front` · `closed_back` · `closed_views` · `unfolded` · `color_lineup`. 없는 자리 = `assets/product`의 기본 사진, `null` = 지움, 문자열 = `POST /api/uploads`가 돌려준 파일 이름. 실행을 만들 때 `data/runs/{run_id}/product/`로 복사해 ③에서 쓴다 |
 | `extra_product_images` | string[] | – (기본 `[]`) | 5자리 외에 더 올린 제품 사진(다른 각도·디테일). `POST /api/uploads`의 파일 이름, **최대 5장** (넘으면 422). `product/extra_1.jpg …`로 복사해 ③에서 ① 사진 뒤에 보조 참조로 보낸다 |
 
@@ -61,13 +66,14 @@
   "used_first_pod": null,
   "product_name": "Galaxy Z Fold",
   "colors": "라벤더, 그라파이트, 크림, 피스타치오",
-  "specs": {
-    "디자인": "201g, 펼친 두께 4.5mm, 8세대에 걸친 폴더블 혁신, 세계에서 가장 가벼운 폴더블, 플렉스 티타늄(디스플레이 하단 이중 티타늄 층), 아머 플렉스힌지, 넓어진 베젤 간격, 아머 알루미늄 프레임, 코닝® 고릴라® 글래스",
-    "디스플레이": "커버 10:16 비율, 메인 4:3 비율, 3,000nits, 빛 반사 방지, 갤럭시 폴드 시리즈 사상 가장 평평하게 펼쳐짐, 접힌 상태 138.4mm·펼친 상태 193.2mm 화면",
-    "성능": "갤럭시용 스냅드래곤® 8 Elite 5세대(CPU·GPU·NPU 통합), 4,800mAh, 연속 재생 하루 최대 26시간, 30분 만에 최대 63% 고속 충전, 12GB·16GB 메모리, 256GB·512GB·1TB 저장 공간",
-    "카메라": "후면 50MP 광각 + 50MP 초광각, 광학 줌 수준의 2배 줌, 10배 디지털 줌, 전면 10MP 커버 카메라 + 10MP 내부 전면 카메라, 나이토그래피, ProVisual Engine 실시간 노이즈 저감, 8K 촬영, 듀얼 레코딩",
-    "Now nudge": "Galaxy AI 기능. 흐름을 끊지 않고 먼저 제안. 커버 디스플레이에서 메인 디스플레이까지 자연스럽게 연결, 알림을 누르면 분할 화면으로 전환, 앱 전환 없이 사진 공유·장소 저장 수행"
-  }
+  "template_id": 1,
+  "pods": [
+    { "name": "디자인", "key": "design", "spec": "201g, 펼친 두께 4.5mm, … 코닝® 고릴라® 글래스", "visual": "제품 단독 또는 한 손에 쥔 클로즈업" },
+    { "name": "디스플레이", "key": "display", "spec": "커버 10:16 비율, 메인 4:3 비율, 3,000nits, …", "visual": "펼친 화면으로 콘텐츠 감상" },
+    { "name": "성능", "key": "performance", "spec": "갤럭시용 스냅드래곤® 8 Elite 5세대, 4,800mAh, …", "visual": "작업 또는 이동 중 장면" },
+    { "name": "카메라", "key": "camera", "spec": "후면 50MP 광각 + 50MP 초광각, …", "visual": "접은 상태를 가로로 쥐고 촬영하는 장면" },
+    { "name": "Now nudge", "key": "nudge", "spec": "Galaxy AI 기능. 흐름을 끊지 않고 먼저 제안. …", "visual": "일상 상황 속 인물(얼굴 비노출)" }
+  ]
 }
 ```
 
@@ -155,13 +161,13 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 | 필드 | 타입 | 설명 · 규칙 |
 |---|---|---|
 | `target_summary` | string | 타겟 요약 한두 문장 |
-| `items` | `PodPlanItem[]` | **노출 순서대로** 5개. 5개 Pod가 한 번씩 |
-| `items[].pod` | `PodName` | |
+| `items` | `PodPlanItem[]` | **노출 순서대로** 모든 Pod가 한 번씩 |
+| `items[].pod` | string | 입력 Pod 이름 그대로. 없는 이름이면 그 안을 다시 생성하고, 사람이 고친 내용이면 422 |
 | `items[].layout` | `Layout` | |
 | `items[].reason` | string | 이 순위에 둔 근거 |
 | `rationale` | string | 순서·레이아웃 조합의 기획 의도 |
 
-코드 검사 (`check_pod_plan` → `warnings`): 5개 Pod가 한 번씩인가 · 1순위가 `used_first_pod`와 다른가 · 기본 순서 대비 위치가 바뀐 Pod가 3개 이상인가 · 인접한 Pod에 같은 레이아웃이 없는가 · 레이아웃을 4종 이상 썼는가.
+코드 검사 (`check_pod_plan` → `warnings`): 모든 Pod가 한 번씩인가 · 1순위가 `used_first_pod`와 다른가 · 기본 순서 대비 위치가 바뀐 Pod가 ⌈0.6n⌉개 이상인가 · 인접한 Pod에 같은 레이아웃이 없는가 · 레이아웃을 min(5, ⌈0.8n⌉)종 이상 썼는가. n = Pod 수, 5개면 원본 규칙(3개 · 4종)과 같다 (`domain.py pod_rules`).
 
 ```json
 {
@@ -189,11 +195,11 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 
 | 필드 | 타입 | 설명 · 규칙 |
 |---|---|---|
-| `pods` | `PodCopy[]` | ①에서 고른 순서와 같은 순서로 5개 |
-| `pods[].pod` | `PodName` | |
+| `pods` | `PodCopy[]` | ①에서 고른 순서와 같은 순서로 모든 Pod |
+| `pods[].pod` | string | ①의 Pod 이름 그대로 |
 | `pods[].eyebrow` | string | Pod명 그대로. **코드가 강제로 맞춘다** |
 | `pods[].headline` | string | 헤드카피. 공백 포함 **20자 이내**, 1줄. 넘으면 코드가 모델에게 다시 줄이게 하고, 그래도 넘으면 경고 |
-| `pods[].headline_type` | `a`~`e` | 헤드카피 구조 유형. 5개 Pod에서 **4종 이상, 같은 유형 2회 이하** |
+| `pods[].headline_type` | `a`~`e` | 헤드카피 구조 유형. **min(5, ⌈0.8n⌉)종 이상, 같은 유형 max(2, ⌈n/5⌉)회 이하** (5개면 4종 · 2회) |
 | `pods[].body` | string | 바디카피. 2~3문장, 공백 포함 **110자 이내** |
 | `pods[].ending_order` | string | 바디 문장 어미 배열 (예 `습니다→죠→보세요`). Pod끼리 겹치면 경고 |
 | `pods[].factcheck` | `{expression, source}[]` | 카피 표현과 그 근거가 된 **입력 스펙 원문 구절**. `source`가 그 Pod 스펙(+제품명·컬러)에 실제로 없으면 경고 |
@@ -356,7 +362,7 @@ Pod마다 슬롯이 하나씩 있고, 슬롯마다 아래 안이 3개씩 생긴�
 { "slot": "디자인", "index": 1 }
 ```
 
-직접 고친 경우 (② 카피, 성능 Pod의 헤드·바디를 고침 — `edited`에는 5개 Pod 전체를 보낸다):
+직접 고친 경우 (② 카피, 성능 Pod의 헤드·바디를 고침 — `edited`에는 모든 Pod를 보낸다):
 
 ```json
 {
@@ -389,7 +395,7 @@ Pod마다 슬롯이 하나씩 있고, 슬롯마다 아래 안이 3개씩 생긴�
   "selected": 2,
   "edited": {
     "angle": "고객 효익을 짧고 선명하게 정리하는 카피",
-    "content": { "pods": ["… 고친 5개 Pod …"], "rationale": "…" },
+    "content": { "pods": ["… 고친 모든 Pod …"], "rationale": "…" },
     "warnings": ["[디스플레이] 바디카피 111자 (최대 110자)", "어미 배열이 같은 Pod가 있습니다."]
   }
 }
@@ -404,7 +410,7 @@ Pod마다 슬롯이 하나씩 있고, 슬롯마다 아래 안이 3개씩 생긴�
 | `slot` | string | ② `"main"`, ③ Pod 이름 |
 | `index` | int | 고칠 안 번호 |
 | `request` | string | 사람의 수정 요청 (1~500자) |
-| `pods` | `PodName[]` | ②에서만 필수. 고칠 Pod들 (여러 개 또는 전체) |
+| `pods` | string[] | ②에서만 필수. 고칠 Pod들 (여러 개 또는 전체) |
 
 ② 카피 — 고른 안에서 지정한 Pod만 AI가 다시 쓰고, 결과를 `edited`로 저장한 뒤 그 안을 선택한다.
 
@@ -517,7 +523,7 @@ crm-20261027-091857-365eae.zip
 
 | 경로 | 내용 |
 |---|---|
-| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`) |
+| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `templates`·`template_pods`(제품 템플릿과 Pod, 모두가 함께 씀. 처음 켤 때 Galaxy Z Fold를 넣는다) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`, 불러온 `template_id`) |
 | `backend/data/runs/{run_id}/product/` | 실행을 만들 때 복사한 제품 사진 |
 | `backend/data/runs/{run_id}/images/` | 생성된 이미지 (`.png`, placeholder 모드는 `.svg`) |
 | `backend/data/runs/{run_id}/html_input.json` | 7-1 |

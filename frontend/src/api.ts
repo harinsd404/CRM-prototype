@@ -1,4 +1,14 @@
-import type { Me, ProductImage, RunInput, RunState, RunSummary, StepContents, StepName } from "./types";
+import type {
+  Me,
+  ProductImage,
+  RunInput,
+  RunState,
+  RunSummary,
+  StepContents,
+  StepName,
+  Template,
+  TemplateSummary,
+} from "./types";
 
 // 배포 경로(예: /park) 아래에서 열릴 때를 위해 /api 주소 앞에 붙인다. 로컬 개발은 빈 문자열
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -45,6 +55,10 @@ export const api = {
     request<RunState>("/runs", { method: "POST", body: JSON.stringify(input) }),
 
   getRun: (runId: string) => request<RunState>(`/runs/${runId}`),
+
+  // 제품 템플릿 (모두가 함께 쓴다)
+  listTemplates: () => request<TemplateSummary[]>("/templates"),
+  getTemplate: (id: number) => request<Template>(`/templates/${id}`),
 
   // 입력 화면의 공식 제품 사진 5자리와 기본 사진
   getProductImages: () => request<ProductImage[]>("/product-images"),

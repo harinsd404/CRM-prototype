@@ -1,8 +1,10 @@
 """삼성닷컴 Pod 도메인 상수. 원본 프롬프트(prompts/original/)의 규칙을 코드로 옮긴 것."""
 
+from dataclasses import dataclass
 from typing import Literal
 
-PodName = Literal["디자인", "디스플레이", "성능", "카메라", "Now nudge"]
+# Pod는 템플릿마다 다르다 (예: Fold는 디자인·디스플레이·성능·카메라·Now nudge). 이름 그대로 슬롯 이름으로 쓴다. 한 실행의 최대 Pod 수
+MAX_PODS = 10
 Layout = Literal["L1", "L2", "L3", "L4", "L5"]
 Mood = Literal["HOT", "WARM", "COLD"]
 Ratio = Literal["1:1", "4:3", "16:9"]
@@ -17,18 +19,6 @@ PRODUCT_IMAGE_LABELS: dict[str, str] = {
 }
 # 5자리 외에 더 올릴 수 있는 제품 사진 수. 모두 첨부 ①의 보조 참조로 보낸다
 MAX_EXTRA_PRODUCT_IMAGES = 5
-
-# 삼성닷컴 기본 순서
-POD_NAMES: tuple[PodName, ...] = ("디자인", "디스플레이", "성능", "카메라", "Now nudge")
-
-# HTML 합성용 이미지 파일명에 쓰는 영문 이름 (P1 [8] JSON의 img 규칙)
-POD_ENGLISH: dict[str, str] = {
-    "디자인": "design",
-    "디스플레이": "display",
-    "성능": "performance",
-    "카메라": "camera",
-    "Now nudge": "nudge",
-}
 
 LAYOUT_DESCRIPTIONS: dict[str, str] = {
     "L1": "텍스트 중앙 정렬(상) + 풀폭 이미지(하) — 텍스트는 이미지 밖",
@@ -47,13 +37,26 @@ LAYOUT_RATIOS: dict[str, tuple[Ratio, ...]] = {
     "L5": ("4:3", "1:1"),
 }
 
-# Pod별 기본 연출 방향 (입력 데이터와 충돌 시 입력 우선)
-POD_VISUAL_DEFAULTS: dict[str, str] = {
-    "디자인": "제품 단독 또는 한 손에 쥔 클로즈업",
-    "디스플레이": "펼친 화면으로 콘텐츠 감상",
-    "성능": "작업 또는 이동 중 장면",
-    "카메라": "접은 상태를 가로로 쥐고 촬영하는 장면",
-    "Now nudge": "일상 상황 속 인물(얼굴 비노출)",
-}
-
 NO_SAFE_ZONE = "없음 (텍스트는 이미지 외부 배치)"
+
+
+@dataclass(frozen=True)
+class PodRules:
+    """Pod 수(n)에 비례하는 규칙. 원본은 Pod 5개 기준(이동 3개, 레이아웃 4종, 헤드카피 유형 4종, 같은 유형 2회까지)."""
+
+    count: int
+    min_moved: int  # 기본 순서와 위치가 달라야 하는 Pod 수 = ⌈0.6n⌉ (1개면 0)
+    min_layouts: int  # 써야 하는 레이아웃 종류 = min(5, ⌈0.8n⌉)
+    min_headline_types: int  # 써야 하는 헤드카피 구조 유형 수 = min(5, ⌈0.8n⌉)
+    max_same_headline_type: int  # 한 유형을 쓸 수 있는 최대 횟수 = max(2, ⌈n/5⌉)
+
+
+def pod_rules(n: int) -> PodRules:
+    ceil_08 = (4 * n + 4) // 5
+    return PodRules(
+        count=n,
+        min_moved=(3 * n + 4) // 5 if n >= 2 else 0,
+        min_layouts=min(5, ceil_08),
+        min_headline_types=min(5, ceil_08),
+        max_same_headline_type=max(2, (n + 4) // 5),
+    )

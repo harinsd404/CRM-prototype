@@ -74,6 +74,7 @@ def create_run(run_input: RunInput, user_id: int) -> RunState:
             Run(
                 id=run.id,
                 user_id=user_id,
+                template_id=run_input.template_id,
                 persona=run_input.persona,
                 product_name=run_input.product_name,
                 state=run.model_dump_json(),

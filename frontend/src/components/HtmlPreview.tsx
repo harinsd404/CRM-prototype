@@ -68,7 +68,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
         </div>
       </div>
 
-      {!ready && <p className="mt-3 text-sm text-gray-500">①~③ 단계(이미지는 Pod 5개 모두)에서 선택하면 조립할 수 있습니다.</p>}
+      {!ready && <p className="mt-3 text-sm text-gray-500">①~③ 단계(이미지는 모든 Pod)에서 선택하면 조립할 수 있습니다.</p>}
       {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
 
       {run.html && (

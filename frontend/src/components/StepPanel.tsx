@@ -182,7 +182,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
 
 const FIRST_GUIDE: Record<StepName, string> = {
   pod: "입력한 타겟과 스펙을 보고 AI가 Pod 순서·레이아웃을 방향이 다른 3안으로 만듭니다.",
-  copy: "고른 Pod 순서에 맞춰 5개 Pod의 카피를 3안으로 만듭니다.",
+  copy: "고른 Pod 순서에 맞춰 모든 Pod의 카피를 3안으로 만듭니다.",
   image: "Pod마다 이미지 3안을 만듭니다. 다 만든 이미지부터 한 장씩 바로 나타납니다.",
 };
 

@@ -60,6 +60,10 @@ class Step(ABC):
     ) -> BaseModel:
         """안 하나를 만든다."""
 
+    def check_output(self, run: RunState, slot: str, content: BaseModel) -> None:
+        """출력이 다음 단계를 깨뜨리면(예: 입력에 없는 Pod 이름) ValueError. 생성 중이면 그 안을 다시 만들고,
+        사람이 고친 내용이면 거절한다."""
+
     def postprocess(self, run: RunState, slot: str, content: BaseModel) -> list[str]:
         """원본 프롬프트의 규칙을 코드로 검사한다. 확정적으로 고칠 수 있는 값은 content를 직접 고치고,
         사람이 판단할 위반은 경고 문구로 돌려준다."""
@@ -131,7 +135,9 @@ class Step(ABC):
 
     def make_edited_option(self, run: RunState, slot: str, angle: str, edited: dict[str, Any]) -> Option:
         """사람이 고친 내용도 같은 스키마·규칙으로 검사한다. 형식이 틀리면 ValidationError."""
-        return self.make_option(run, slot, angle, self.schema.model_validate(edited))
+        content = self.schema.model_validate(edited)
+        self.check_output(run, slot, content)
+        return self.make_option(run, slot, angle, content)
 
 
 class TextStep(Step):
@@ -148,7 +154,9 @@ class TextStep(Step):
     ) -> BaseModel:
         if settings.llm_provider == "mock":
             return self.mock_option(run, slot, angle, index)
-        return await invoke_structured(self.prompt_name, self.schema, {**context, "angle": angle})
+        content = await invoke_structured(self.prompt_name, self.schema, {**context, "angle": angle})
+        self.check_output(run, slot, content)
+        return content
 
 
 @lru_cache

@@ -14,12 +14,12 @@ flowchart TD
 
     %% ① Pod 순서·레이아웃
     S0 -- "RunInput" --> G1["🟦 ① Pod 순서·레이아웃 생성<br/>prompts/pod.md × 방향 3개 병렬"]
-    G1 -- "PodOption × 3" --> C1["⬜ 규칙 검사 check_pod_plan<br/>5개 Pod·1순위 중복·이동 3개·레이아웃 연속/4종"]
+    G1 -- "PodOption × 3" --> C1["⬜ 규칙 검사 check_pod_plan<br/>모든 Pod·1순위 중복·이동 ⌈0.6n⌉개·레이아웃 연속/min(5,⌈0.8n⌉)종"]
     C1 -- "Option × 3 (+warnings)" --> H1{"🟧 사람: ① 선택"}
     H1 -- "다시 생성 (+수정 요청 feedback)" --> G1
     H1 -- "직접 수정: 블록 끌어서 순서·레이아웃 변경" --> C1b["⬜ 같은 규칙으로 재검사"]
     C1b --> H1
-    H1 -- "선택 = 5개 Pod 순서 + Pod별 L1~L5" --> D1[("🟩 steps.pod.slots.main<br/>selected / edited")]
+    H1 -- "선택 = Pod 순서 + Pod별 L1~L5" --> D1[("🟩 steps.pod.slots.main<br/>selected / edited")]
 
     %% ② 카피
     D1 -- "RunInput + Pod 순서·레이아웃" --> G2["🟦 ② 카피 생성<br/>prompts/copy.md × 방향 3개 병렬"]
@@ -33,7 +33,7 @@ flowchart TD
     H2 -- "선택 = Pod별 eyebrow·헤드·바디" --> D2[("🟩 steps.copy.slots.main")]
 
     %% ③ 이미지 (Pod마다)
-    D2 -- "Pod별 레이아웃 + 헤드·바디" --> LOOP["⬜ Pod 5개를 하나씩 차례로 요청<br/>generate?slot={Pod}"]
+    D2 -- "Pod별 레이아웃 + 헤드·바디" --> LOOP["⬜ Pod를 하나씩 차례로 요청<br/>generate?slot={Pod}"]
     LOOP --> G3["🟦 ③-a 이미지 연출안 생성<br/>prompts/image_brief.md 1번 → 서로 다른 3안"]
     G3 -- "ImageBrief" --> N3["⬜ 화면비·Safe Zone을 레이아웃에 맞춤<br/>image_model.md에서 정면·후면·펼침 등 필요한 섹션만 + 연출안 → 이미지 프롬프트"]
     N3 -- "프롬프트 + 공식 제품 사진" --> G3b["🟦 ③-b 이미지 모델<br/>gemini-3.1-flash-image"]

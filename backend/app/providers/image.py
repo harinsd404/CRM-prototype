@@ -15,7 +15,6 @@ from google.genai import errors as genai_errors
 from google.genai import types
 
 from app.config import settings
-from app.core.domain import POD_ENGLISH
 from app.core.guard import count_image_call
 
 # 자리표시 이미지의 화면비별 크기
@@ -35,7 +34,7 @@ class ImageProvider(Protocol):
     ) -> Path:
         """prompt로 이미지 한 장을 만들어 out_dir에 저장하고 경로를 돌려준다.
 
-        references는 참조 이미지(공식 제품 사진 등), label은 자리표시 이미지에 쓰는 짧은 설명, pod는 Pod 이름.
+        references는 참조 이미지(공식 제품 사진 등), label은 자리표시 이미지에 쓰는 짧은 설명, pod는 Pod 영문 이름(풀 폴더 이름).
         """
         ...
 
@@ -91,7 +90,7 @@ class PoolProvider:
     async def generate(
         self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
-        pod_images = _images(settings.image_pool_dir / POD_ENGLISH[pod])
+        pod_images = _images(settings.image_pool_dir / pod)  # pod = Pod 영문 이름
         same_ratio = [p for p in pod_images if p.name.startswith(f"{pool_ratio_tag(ratio)}_")]
         pool = same_ratio or pod_images or _images(settings.image_pool_dir)
         if not pool:

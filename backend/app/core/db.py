@@ -1,4 +1,4 @@
-"""SQLite DB (data/app.db). 사용자·로그인 세션·실행을 저장한다.
+"""SQLite DB (data/app.db). 사용자·로그인 세션·제품 템플릿·실행을 저장한다.
 
 실행의 진행 상태(RunState)는 구조가 깊어서 표로 나누지 않고 runs.state에 JSON 그대로 넣는다.
 생성된 이미지·복사한 제품 사진·html_input.json 같은 파일은 계속 data/runs/{run_id}/ 폴더에 둔다.
@@ -8,8 +8,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 
-from sqlalchemy import ForeignKey, String, Text, create_engine, event
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
+from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, create_engine, event
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
 
 from app.config import settings
 
@@ -35,11 +35,47 @@ class LoginSession(Base):
     expires_at: Mapped[datetime]
 
 
+class Template(Base):
+    """제품 하나의 템플릿 (예: Galaxy Z Fold). 모든 사용자가 함께 쓴다."""
+
+    __tablename__ = "templates"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+    product_name: Mapped[str] = mapped_column(String(200))
+    colors: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    updated_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+    pods: Mapped[list["TemplatePod"]] = relationship(
+        order_by="TemplatePod.position", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class TemplatePod(Base):
+    """템플릿의 Pod. position = 기본 순서, enabled = 새 실행에서 기본으로 켜 둘지."""
+
+    __tablename__ = "template_pods"
+    __table_args__ = (UniqueConstraint("template_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("templates.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int]
+    name: Mapped[str] = mapped_column(String(30))
+    key: Mapped[str] = mapped_column(String(30))
+    spec: Mapped[str] = mapped_column(Text, default="")
+    visual: Mapped[str] = mapped_column(Text, default="")
+    enabled: Mapped[bool] = mapped_column(default=True)
+
+
 class Run(Base):
     __tablename__ = "runs"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    template_id: Mapped[int | None] = mapped_column(ForeignKey("templates.id", ondelete="SET NULL"))
     # 목록 화면용으로 state에서 꺼내 둔 값
     persona: Mapped[str] = mapped_column(Text)
     product_name: Mapped[str] = mapped_column(String(200))
@@ -66,6 +102,18 @@ SessionLocal = sessionmaker(engine, expire_on_commit=False)
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    _add_missing_columns()
+    from app.core.templates import seed_templates  # 순환 import 방지
+
+    seed_templates()
+
+
+def _add_missing_columns() -> None:
+    """create_all은 이미 있는 테이블에 칸을 더하지 않는다. 마이그레이션 도구 없이 나중에 생긴 칸만 더한다."""
+    with engine.begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(runs)")}
+        if "template_id" not in columns:
+            conn.exec_driver_sql("ALTER TABLE runs ADD COLUMN template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL")
 
 
 @contextmanager

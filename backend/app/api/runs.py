@@ -16,7 +16,8 @@ from app.config import settings
 from app.core import guard, store
 from app.core.db import User
 from app.core.render import build_html_input, render_crm
-from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE, PodName
+from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE
+from app.core.templates import get_template
 from app.core.state import MAIN_SLOT, STEP_ORDER, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
 from app.steps.copy import CopyOption, CopyStep
@@ -34,7 +35,7 @@ class ReviseRequest(BaseModel):
     slot: str = MAIN_SLOT  # 이미지 단계는 Pod 이름
     index: int  # 고칠 안 번호
     request: str = Field(min_length=1, max_length=500)  # 사람의 수정 요청
-    pods: list[PodName] = []  # 카피 단계: 고칠 Pod들 (여러 개 또는 전체)
+    pods: list[str] = []  # 카피 단계: 고칠 Pod들 (여러 개 또는 전체)
 
 
 class SelectRequest(BaseModel):
@@ -98,6 +99,8 @@ def _is_complete(run: RunState, step_name: str) -> bool:
 
 @router.post("", response_model=RunState)
 def create_run(run_input: RunInput, user: CurrentUser) -> RunState:
+    if run_input.template_id is not None and get_template(run_input.template_id) is None:
+        run_input.template_id = None  # 그 사이 지워진 템플릿
     try:
         return store.create_run(run_input, user.id)
     except ValueError as e:  # 올린 제품 사진을 찾을 수 없음
@@ -204,6 +207,8 @@ def select_option(run_id: str, step_name: str, body: SelectRequest, user: Curren
             edited = step.make_edited_option(run, body.slot, slot.options[body.index].angle, body.edited)
         except ValidationError as e:
             raise HTTPException(422, f"수정 내용 형식이 맞지 않습니다: {e}") from e
+        except ValueError as e:  # 입력에 없는 Pod 이름 등
+            raise HTTPException(422, str(e)) from e
 
     slot.selected = body.index
     slot.edited = edited

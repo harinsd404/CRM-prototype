@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.core.domain import LAYOUT_DESCRIPTIONS, PodName
+from app.core.domain import LAYOUT_DESCRIPTIONS, pod_rules
 from app.core.state import RunState
 from app.config import settings
 from app.steps.base import TextStep, invoke_structured
@@ -19,7 +19,7 @@ class FactCheck(BaseModel):
 
 
 class PodCopy(BaseModel):
-    pod: PodName
+    pod: str = Field(description="확정된 Pod 이름 그대로")
     eyebrow: str = Field(description="Pod명 그대로")
     headline: str = Field(description=f"헤드카피. 공백 포함 {HEADLINE_MAX}자 이내, 1줄")
     headline_type: Literal["a", "b", "c", "d", "e"] = Field(description="헤드카피 구조 유형")
@@ -29,7 +29,7 @@ class PodCopy(BaseModel):
 
 
 class CopyOption(BaseModel):
-    pods: list[PodCopy] = Field(description="확정된 Pod 순서와 같은 순서로 5개")
+    pods: list[PodCopy] = Field(description="확정된 Pod 순서와 같은 순서로 모든 Pod")
     rationale: str = Field(description="카피 소구 기획 의도")
 
 
@@ -38,7 +38,7 @@ class RevisedPods(BaseModel):
 
 
 class ShortHeadline(BaseModel):
-    pod: PodName
+    pod: str
     headline: str
 
 
@@ -83,15 +83,28 @@ def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) 
         if unsourced := [f.source for f in p.factcheck if _compact(f.source) not in allowed]:
             warnings.append(f"[{p.pod}] 입력 스펙에 없는 근거: {', '.join(unsourced)}")
 
+    rules = pod_rules(len(plan_pods))
     types = Counter(p.headline_type for p in copy.pods)
-    if len(types) < 4:
-        warnings.append(f"헤드카피 구조 유형을 {len(types)}종만 썼습니다 (최소 4종).")
-    if overused := [t for t, n in types.items() if n > 2]:
-        warnings.append(f"같은 헤드카피 유형을 2회 넘게 썼습니다: {', '.join(overused)}")
+    if len(types) < rules.min_headline_types:
+        warnings.append(f"헤드카피 구조 유형을 {len(types)}종만 썼습니다 (최소 {rules.min_headline_types}종).")
+    if overused := [t for t, n in types.items() if n > rules.max_same_headline_type]:
+        warnings.append(f"같은 헤드카피 유형을 {rules.max_same_headline_type}회 넘게 썼습니다: {', '.join(overused)}")
     endings = [p.ending_order.replace(" ", "") for p in copy.pods]
     if len(set(endings)) < len(endings):
         warnings.append("어미 배열이 같은 Pod가 있습니다.")
     return warnings
+
+
+def copy_rule_vars(run: RunState) -> dict[str, str]:
+    """카피 프롬프트의 Pod 수 관련 변수. 최소 개수는 Pod 수에 비례한다 (pod_rules)."""
+    rules = pod_rules(len(run.input.pods))
+    return {
+        "pod_count": str(rules.count),
+        "pod_list": " / ".join(run.input.pod_names),
+        "min_headline_types": str(rules.min_headline_types),
+        "max_same_headline_type": str(rules.max_same_headline_type),
+        "min_fact_first": str(min(2, rules.count)),
+    }
 
 
 _MOCK_ENDINGS = ["습니다→죠→보세요", "죠→보세요→습니다", "보세요→습니다→죠", "습니다→보세요→죠", "죠→습니다→보세요"]
@@ -116,7 +129,12 @@ class CopyStep(TextStep):
             f"{rank}. {item['pod']} — {item['layout']} ({LAYOUT_DESCRIPTIONS[item['layout']]})"
             for rank, item in enumerate(self._plan(run), 1)
         )
-        return {"input_data": run.input.format(), "pod_plan": plan}
+        return {"input_data": run.input.format(), "pod_plan": plan, **copy_rule_vars(run)}
+
+    def check_output(self, run: RunState, slot: str, content: CopyOption) -> None:
+        allowed = [item["pod"] for item in self._plan(run)]
+        if unknown := [p.pod for p in content.pods if p.pod not in allowed]:
+            raise ValueError(f"확정된 Pod 순서에 없는 Pod 이름: {', '.join(unknown)}")
 
     async def generate_option(
         self, run: RunState, slot: str, context: dict[str, str], angle: str, index: int
@@ -144,6 +162,7 @@ class CopyStep(TextStep):
                     "current_copy": current,
                     "pods": ", ".join(p.pod for p in targets),
                     "request": request,
+                    **copy_rule_vars(run),
                     "headline_max": str(HEADLINE_MAX),
                     "body_max": str(BODY_MAX),
                 },
@@ -158,13 +177,13 @@ class CopyStep(TextStep):
         return copy.model_copy(update={"pods": [revised.get(p.pod, p) for p in copy.pods]})
 
     def postprocess(self, run: RunState, slot: str, content: CopyOption) -> list[str]:
-        sources = {pod: f"{spec} {run.input.product_name} {run.input.colors}" for pod, spec in run.input.specs.items()}
+        sources = {pod.name: f"{pod.spec} {run.input.product_name} {run.input.colors}" for pod in run.input.pods}
         return check_copy(content, [item["pod"] for item in self._plan(run)], sources)
 
     def mock_option(self, run: RunState, slot: str, angle: str, index: int) -> CopyOption:
         pods = []
         for i, item in enumerate(self._plan(run)):
-            spec = run.input.specs.get(item["pod"], "").strip() or "(입력 데이터 없음)"
+            spec = run.input.pod(item["pod"]).spec.strip() or "(입력 데이터 없음)"
             pods.append(
                 PodCopy(
                     pod=item["pod"],

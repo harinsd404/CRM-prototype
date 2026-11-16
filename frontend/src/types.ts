@@ -13,8 +13,10 @@ export const STEP_LABELS: Record<StepName, string> = {
 // POD·카피 단계의 슬롯. 이미지 단계는 Pod 이름이 슬롯이다.
 export const MAIN_SLOT = "main";
 
-export type PodName = "디자인" | "디스플레이" | "성능" | "카메라" | "Now nudge";
-export const POD_NAMES: PodName[] = ["디자인", "디스플레이", "성능", "카메라", "Now nudge"];
+// Pod는 템플릿마다 다르다 (예: Fold는 디자인·디스플레이·성능·카메라·Now nudge). 이름이 곧 슬롯 이름이다
+export type PodName = string;
+// backend/app/core/domain.py MAX_PODS와 맞춘다
+export const MAX_PODS = 10;
 
 export type Layout = "L1" | "L2" | "L3" | "L4" | "L5";
 export const LAYOUTS: Layout[] = ["L1", "L2", "L3", "L4", "L5"];
@@ -95,14 +97,23 @@ export interface StepState<S extends StepName> {
   slots: Record<string, SlotState<S>>;
 }
 
+/** 이번 실행에 쓰는 Pod 하나 (backend/app/core/state.py PodInput) */
+export interface PodInput {
+  name: string;
+  key: string; // 영문 이름 (HTML 합성용 이미지 파일명). 비우면 서버가 pod1, pod2 …로 채운다
+  spec: string;
+  visual: string; // 이미지 기본 연출 방향
+}
+
 export interface RunInput {
+  template_id: number | null; // 불러온 템플릿 (없으면 직접 입력)
   target_id: string;
   persona: string;
   mood: Mood;
   used_first_pod: PodName | null;
   product_name: string;
   colors: string;
-  specs: Record<PodName, string>;
+  pods: PodInput[]; // 기본 순서대로
   // 공식 제품 사진을 바꾸거나 지운 자리만 적는다. 없는 자리 = 기본 사진, null = 지움, 문자열 = 올린 파일 이름
   product_images?: Partial<Record<string, string | null>>;
   // 5자리 외에 더 올린 제품 사진 파일 이름 (최대 MAX_EXTRA_PRODUCT_IMAGES장)
@@ -112,7 +123,6 @@ export interface RunInput {
 // backend/app/core/domain.py MAX_EXTRA_PRODUCT_IMAGES와 맞춘다
 export const MAX_EXTRA_PRODUCT_IMAGES = 5;
 
-// GET /api/product-images (backend/app/api/product_images.py)
 export interface Me {
   username: string;
 }
@@ -131,6 +141,32 @@ export interface RunSummary {
   input: RunInput;
 }
 
+/** 템플릿의 Pod. enabled = 새 실행에서 기본으로 켜 둘지 (backend/app/core/templates.py) */
+export interface TemplatePod extends PodInput {
+  enabled: boolean;
+}
+
+/** 제품 템플릿. 모든 사용자가 함께 쓴다 */
+export interface Template {
+  id: number;
+  name: string;
+  product_name: string;
+  colors: string;
+  pods: TemplatePod[];
+  updated_at: string;
+  updated_by: string | null;
+}
+
+export interface TemplateSummary {
+  id: number;
+  name: string;
+  product_name: string;
+  pod_count: number;
+  updated_at: string;
+  updated_by: string | null;
+}
+
+// GET /api/product-images (backend/app/api/product_images.py)
 export interface ProductImage {
   role: string;
   label: string;
