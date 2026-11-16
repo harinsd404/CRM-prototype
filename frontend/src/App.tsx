@@ -187,7 +187,7 @@ export default function App() {
         )}
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+      <main className={`mx-auto max-w-6xl space-y-6 px-6 pt-8 ${run ? "pb-28" : "pb-8"}`}>
         {loadError && <ErrorMessage message={loadError} onClose={() => setLoadError(null)} />}
 
         {!run ? (
@@ -220,8 +220,6 @@ export default function App() {
             })}
 
             <HtmlPreview run={run} onChange={setRun} />
-
-            <FeedbackPanel run={run} />
 
             <footer className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-5">
               <p className="text-sm text-gray-500">
@@ -265,6 +263,9 @@ export default function App() {
                 )}
               </div>
             </footer>
+
+            {/* 오른쪽 아래 떠 있는 버튼으로 어디서든 연다 (아래 여백 pb-28은 이 버튼 자리) */}
+            <FeedbackPanel key={run.id} run={run} />
             {savingTemplate && (
               <SaveTemplateDialog
                 run={run}
