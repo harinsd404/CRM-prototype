@@ -129,9 +129,9 @@ def save_as_template(run_id: str, body: SaveTemplateRequest, user: CurrentUser) 
         templates.check_name_free(name, exclude_id=base.id if base else None)
         data = templates.template_data_from_run(run, name, base)
         if base is None:
-            saved = templates.create_template(data, user.id)
+            saved = templates.create_template(data, user.id, source="run")
         else:
-            saved = templates.update_template(base.id, data, user.id)
+            saved = templates.update_template(base.id, data, user.id, source="run")
             assert saved is not None
     except TemplateNameTaken as e:
         raise HTTPException(409, str(e)) from e

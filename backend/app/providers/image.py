@@ -4,6 +4,7 @@ import mimetypes
 import random
 import shutil
 import time
+from dataclasses import dataclass
 from functools import lru_cache
 from html import escape
 from pathlib import Path
@@ -28,20 +29,38 @@ _POOL_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".svg"}
 _PALETTES = [("#f6d365", "#fda085"), ("#a1c4fd", "#c2e9fb"), ("#d4fc79", "#96e6a1"), ("#fbc2eb", "#a6c1ee")]
 
 
+@dataclass(frozen=True)
+class Reference:
+    """참조 사진 하나와 그 앞에 붙이는 설명. 설명 없이 보내면 모델이 여러 대가 찍힌 시트·라인업 사진의
+    '대수와 배열'까지 따라 그려서, 제품 프로필의 사진 자리 설명(caption)을 함께 보낸다."""
+
+    path: Path
+    caption: str
+
+
 class ImageProvider(Protocol):
     async def generate(
-        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
+        self, prompt: str, references: list[Reference], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
         """prompt로 이미지 한 장을 만들어 out_dir에 저장하고 경로를 돌려준다.
 
-        references는 참조 이미지(공식 제품 사진 등), label은 자리표시 이미지에 쓰는 짧은 설명, pod는 Pod 영문 이름(풀 폴더 이름).
+        references는 참조 이미지(공식 제품 사진 등)와 설명, label은 자리표시 이미지에 쓰는 짧은 설명, pod는 Pod 영문 이름(풀 폴더 이름).
         """
         ...
 
     async def edit(
-        self, source: Path, request: str, references: list[Path], out_dir: Path, ratio: str, seed: int, pod: str
+        self,
+        source: Path,
+        request: str,
+        references: list[Reference],
+        out_dir: Path,
+        ratio: str,
+        seed: int,
+        pod: str,
+        keep_rules: str = "",
     ) -> Path:
-        """이미 만든 이미지(source)를 사람의 수정 요청(request)대로 고친 새 이미지를 저장하고 경로를 돌려준다."""
+        """이미 만든 이미지(source)를 사람의 수정 요청(request)대로 고친 새 이미지를 저장하고 경로를 돌려준다.
+        keep_rules는 고치는 동안 제품이 바뀌지 않게 지킬 규칙 (제품 프로필의 edit_rules)."""
         ...
 
 
@@ -49,7 +68,7 @@ class PlaceholderProvider:
     """GPU 없이 흐름을 확인하기 위한 SVG 자리표시 이미지."""
 
     async def generate(
-        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
+        self, prompt: str, references: list[Reference], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
         width, height = IMAGE_SIZES[ratio]
         start, end = _PALETTES[seed % len(_PALETTES)]
@@ -65,7 +84,15 @@ class PlaceholderProvider:
         return path
 
     async def edit(
-        self, source: Path, request: str, references: list[Path], out_dir: Path, ratio: str, seed: int, pod: str
+        self,
+        source: Path,
+        request: str,
+        references: list[Reference],
+        out_dir: Path,
+        ratio: str,
+        seed: int,
+        pod: str,
+        keep_rules: str = "",
     ) -> Path:
         return await self.generate("", references, out_dir, ratio, f"수정: {request}", seed, pod)
 
@@ -88,7 +115,7 @@ class PoolProvider:
     """
 
     async def generate(
-        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
+        self, prompt: str, references: list[Reference], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
         pod_images = _images(settings.image_pool_dir / pod)  # pod = Pod 영문 이름
         same_ratio = [p for p in pod_images if p.name.startswith(f"{pool_ratio_tag(ratio)}_")]
@@ -101,7 +128,15 @@ class PoolProvider:
         return path
 
     async def edit(
-        self, source: Path, request: str, references: list[Path], out_dir: Path, ratio: str, seed: int, pod: str
+        self,
+        source: Path,
+        request: str,
+        references: list[Reference],
+        out_dir: Path,
+        ratio: str,
+        seed: int,
+        pod: str,
+        keep_rules: str = "",
     ) -> Path:
         # 풀은 수정할 수 없으므로 같은 Pod·화면비의 다른 이미지를 고른다 (시연 장애 대비용)
         return await self.generate("", references, out_dir, ratio, "", seed + 1, pod)
@@ -124,10 +159,9 @@ def _vertex_slots() -> asyncio.Semaphore:
 _EDIT_PROMPT = """Edit the FIRST attached image according to the request below.
 
 - Change only what the request asks for. Keep everything else — composition, framing, lighting, mood — as it is.
-- The phone must stay exactly the device shown in the other attached official product images:
-  same silhouette and proportion, same tight corner radius (about 1/30 of the body height),
-  exactly 2 rear lenses plus one LED flash, same body color.
-- Keep exactly ONE device, with the same side (front screen or back) facing the camera as in the image to edit.
+- The device must stay exactly the one shown in the other attached official product images.
+{keep_rules}
+- Keep exactly ONE device.
 - Output ONE continuous photograph. No collage, borders, bars, or panels.
 - Render NO text, letters, numbers, logos, or watermarks.
 
@@ -135,33 +169,11 @@ Request: {request}
 """
 
 
-# 참조 사진마다 앞에 붙이는 설명. 설명 없이 보내면 모델이 여러 대가 찍힌 시트·라인업 사진의 '대수와 배열'까지 따라 그린다
-_REFERENCE_CAPTIONS = {
-    "closed_front": "[Product reference — CLOSED, FRONT side: cover screen with punch-hole camera.]",
-    "closed_back": "[Product reference — CLOSED, BACK side: matte back panel with the two-lens camera island.]",
-    "unfolded": "[Product reference — FULLY UNFOLDED, inner main screen side. One flat device.]",
-    "closed_views": (
-        "[Measurement sheet — this is ONE single device photographed three times (side, back, front) "
-        "for thickness and frame shape only. These are NOT separate phones. "
-        "Never reproduce this side-by-side layout.]"
-    ),
-    "color_lineup": (
-        "[Color swatch only — several units in different body colors. Take ONLY the requested body color. "
-        "Ignore how many devices there are, their arrangement, and their angle.]"
-    ),
-    "style_anchor": "[Style anchor — copy only color grading, lighting and background tone. Ignore its content.]",
-}
-_EXTRA_CAPTION = (
-    "[Additional detail photo of the same device — use only for design details. "
-    "Ignore how many devices it shows and which side faces the camera.]"
-)
-
-
-def _reference_parts(references: list[Path]) -> list[types.Part | str]:
+def _reference_parts(references: list[Reference]) -> list[types.Part | str]:
     """참조 사진마다 무엇인지 설명을 앞에 붙여 끼워 넣는다."""
     parts: list[types.Part | str] = []
-    for path in references:
-        parts += [_REFERENCE_CAPTIONS.get(path.stem, _EXTRA_CAPTION), _image_part(path)]
+    for reference in references:
+        parts += [reference.caption, _image_part(reference.path)]
     return parts
 
 
@@ -169,14 +181,22 @@ class VertexGeminiProvider:
     """회사 GCP 프로젝트의 Vertex AI Gemini 이미지 모델. 원본 P2처럼 공식 제품 사진을 함께 보낸다."""
 
     async def generate(
-        self, prompt: str, references: list[Path], out_dir: Path, ratio: str, label: str, seed: int, pod: str
+        self, prompt: str, references: list[Reference], out_dir: Path, ratio: str, label: str, seed: int, pod: str
     ) -> Path:
         _require_references(references)
         parts: list[types.Part | str] = [*_reference_parts(references), prompt]
         return _save_image(await self._call_with_backoff(parts, ratio, seed), out_dir)
 
     async def edit(
-        self, source: Path, request: str, references: list[Path], out_dir: Path, ratio: str, seed: int, pod: str
+        self,
+        source: Path,
+        request: str,
+        references: list[Reference],
+        out_dir: Path,
+        ratio: str,
+        seed: int,
+        pod: str,
+        keep_rules: str = "",
     ) -> Path:
         _require_references(references)
         # 첫 첨부 = 고칠 이미지, 그 뒤 = 공식 제품 사진 (고치는 동안 제품 모양이 바뀌지 않게)
@@ -184,7 +204,7 @@ class VertexGeminiProvider:
             "[Image to edit]",
             _image_part(source),
             *_reference_parts(references),
-            _EDIT_PROMPT.format(request=request),
+            _EDIT_PROMPT.format(request=request, keep_rules=keep_rules.strip()),
         ]
         return _save_image(await self._call_with_backoff(parts, ratio, seed), out_dir)
 
@@ -242,7 +262,7 @@ class VertexGeminiProvider:
         raise AssertionError("unreachable")
 
 
-def _require_references(references: list[Path]) -> None:
+def _require_references(references: list[Reference]) -> None:
     if not references:
         # 원본 P2: 제품 사진(①)이 없으면 생성하지 않는다
         raise RuntimeError(

@@ -4,7 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES, MAX_PODS, Mood, ProductImageRole
+from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES, MAX_PODS, Mood
+from app.core.profile import FOLD_PROFILE, ProductProfile
 from app.core.seed import FOLD_TEMPLATE
 
 # 단계 순서. 각 단계는 바로 앞 단계에서 선택된 안을 입력으로 받는다.
@@ -46,11 +47,14 @@ class RunInput(BaseModel):
     colors: str = Field(min_length=1, description="컬러 라인업 (쉼표로 구분)")
     pods: list[PodInput] = Field(min_length=1, max_length=MAX_PODS, description="이번에 쓰는 Pod (기본 순서대로)")
     # 공식 제품 사진을 바꾸거나 지운 자리만 적는다. 없는 자리 = 기본 사진, null = 지움, 문자열 = 올린 파일 이름
-    product_images: dict[ProductImageRole, str | None] = Field(
+    product_images: dict[str, str | None] = Field(
         default={}, description="공식 제품 사진 자리별 선택 (없으면 기본 사진)"
     )
     extra_product_images: list[str] = Field(
         default=[], max_length=MAX_EXTRA_PRODUCT_IMAGES, description="5자리 외에 더 올린 제품 사진 파일 이름"
+    )
+    profile: ProductProfile | None = Field(
+        default=None, description="제품 프로필(프롬프트의 제품별 블록). 템플릿에서 불러오거나 AI가 만든다. 없으면 Fold"
     )
 
     @model_validator(mode="before")
@@ -78,9 +82,17 @@ class RunInput(BaseModel):
         # 원본 P1: 제품 정보가 전혀 없으면 진행하지 않는다
         if not any(pod.spec.strip() for pod in self.pods):
             raise ValueError("Pod별 스펙을 하나 이상 입력해 주세요.")
+        # 프로필에 없는 사진 자리는 버린다 (다른 제품 템플릿에서 넘어온 값)
+        slots = set(self.product_profile.slot_labels())
+        self.product_images = {k: v for k, v in self.product_images.items() if k in slots}
         if self.used_first_pod not in (None, *names):
             self.used_first_pod = None  # 앞선 타겟의 Pod가 이번 Pod 목록에 없으면 규칙이 의미 없다
         return self
+
+    @property
+    def product_profile(self) -> ProductProfile:
+        """제품별 프롬프트 블록. 프로필 기능 전에 만든 실행은 Galaxy Z Fold 프로필을 쓴다."""
+        return self.profile or FOLD_PROFILE
 
     @property
     def pod_names(self) -> list[str]:

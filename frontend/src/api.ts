@@ -6,6 +6,8 @@ import type {
   ImageCheck,
   Me,
   ProductImage,
+  ProductProfile,
+  ProfileResult,
   RunInput,
   RunState,
   RunSummary,
@@ -89,12 +91,25 @@ export const api = {
   deleteFeedback: (id: number) => request<{ ok: boolean }>(`/feedback/${id}`, { method: "DELETE" }),
   feedbackCsvUrl: (filter: FeedbackFilter) => `${BASE}/api/feedback/export${feedbackQuery(filter)}`,
 
-  // 고른 제품 사진의 해상도·장 수·필수 자리 검사 (경고만)
-  checkProductImages: (product_images: RunInput["product_images"], extra_product_images: string[]) =>
+  // 고른 제품 사진의 해상도·장 수·필수 자리 검사 (경고만). profile이 null이면 Fold 기본 프로필
+  checkProductImages: (
+    product_images: RunInput["product_images"],
+    extra_product_images: string[],
+    profile: ProductProfile | null,
+  ) =>
     request<ImageCheck>("/product-images/check", {
       method: "POST",
-      body: JSON.stringify({ product_images, extra_product_images }),
+      body: JSON.stringify({ product_images, extra_product_images, profile }),
     }),
+
+  // 제품 프로필: 기본(Fold), 올린 사진으로 AI 생성
+  defaultProfile: () => request<ProductProfile>("/profiles/default"),
+  generateProfile: (body: {
+    product_name: string;
+    colors: string;
+    pods: { name: string; spec: string }[];
+    images: string[];
+  }) => request<ProfileResult>("/profiles/generate", { method: "POST", body: JSON.stringify(body) }),
 
   // 입력 화면의 공식 제품 사진 5자리와 기본 사진
   getProductImages: () => request<ProductImage[]>("/product-images"),

@@ -8,16 +8,7 @@ MAX_PODS = 10
 Layout = Literal["L1", "L2", "L3", "L4", "L5"]
 Mood = Literal["HOT", "WARM", "COLD"]
 Ratio = Literal["1:1", "4:3", "16:9"]
-# 공식 제품 사진(P2의 첨부 ①) 자리. 파일 이름(assets/product/{자리}.png)과 같다
-ProductImageRole = Literal["closed_front", "closed_back", "closed_views", "unfolded", "color_lineup"]
-PRODUCT_IMAGE_LABELS: dict[str, str] = {
-    "closed_front": "접은 앞면",
-    "closed_back": "접은 뒷면",
-    "closed_views": "접은 상태 측면·뒷면·앞면",
-    "unfolded": "펼친 상태",
-    "color_lineup": "컬러 라인업",
-}
-# 5자리 외에 더 올릴 수 있는 제품 사진 수. 모두 첨부 ①의 보조 참조로 보낸다
+# 사진 자리(제품 프로필의 photo_slots) 외에 더 올릴 수 있는 제품 사진 수. 모두 보조 참조로 보낸다
 MAX_EXTRA_PRODUCT_IMAGES = 5
 
 LAYOUT_DESCRIPTIONS: dict[str, str] = {

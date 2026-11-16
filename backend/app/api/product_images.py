@@ -5,8 +5,9 @@ from pydantic import BaseModel
 
 from app.api.auth import current_user
 from app.config import settings
-from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES, PRODUCT_IMAGE_LABELS
+from app.core.domain import MAX_EXTRA_PRODUCT_IMAGES
 from app.core.image_check import ImageCheck, check_product_images
+from app.core.profile import FOLD_PROFILE, ProductProfile
 from app.core.store import default_product_image
 
 router = APIRouter(tags=["product-images"], dependencies=[Depends(current_user)])
@@ -28,26 +29,32 @@ class Upload(BaseModel):
 
 @router.get("/product-images", response_model=list[ProductImage])
 def list_product_images() -> list[ProductImage]:
-    """입력 화면에 보여 줄 공식 제품 사진 5자리와 기본 사진."""
+    """Fold 기본 프로필의 사진 자리와 assets/product 기본 사진 (템플릿 없이 시작할 때의 기본값)."""
     return [
         ProductImage(
             role=role,
             label=label,
             default_url=f"/api/assets/product/{path.name}" if (path := default_product_image(role)) else None,
         )
-        for role, label in PRODUCT_IMAGE_LABELS.items()
+        for role, label in FOLD_PROFILE.slot_labels().items()
     ]
 
 
 class CheckRequest(BaseModel):
     product_images: dict[str, str | None] = {}
     extra_product_images: list[str] = []
+    profile: ProductProfile | None = None  # 없으면 Fold 기본 프로필 + assets/product 기본 사진
 
 
 @router.post("/product-images/check", response_model=ImageCheck)
 def check(body: CheckRequest) -> ImageCheck:
     """입력 화면에서 고른 제품 사진의 해상도·장 수·필수 자리를 검사한다 (경고만, 막지는 않는다)."""
-    return check_product_images(body.product_images, body.extra_product_images[:MAX_EXTRA_PRODUCT_IMAGES])
+    return check_product_images(
+        body.product_images,
+        body.extra_product_images[:MAX_EXTRA_PRODUCT_IMAGES],
+        body.profile or FOLD_PROFILE,
+        use_defaults=body.profile is None,
+    )
 
 
 @router.post("/uploads", response_model=Upload)

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { api, withBase } from "../api";
-import { MAX_EXTRA_PRODUCT_IMAGES, type ImageCheck, type ProductImage, type RunInput } from "../types";
+import { MAX_EXTRA_PRODUCT_IMAGES, type ImageCheck, type ProductImage, type ProductProfile, type RunInput } from "../types";
 import { Spinner } from "./icons";
 
 type Choices = NonNullable<RunInput["product_images"]>;
@@ -8,42 +8,48 @@ type Choices = NonNullable<RunInput["product_images"]>;
 interface Props {
   value: Choices;
   onChange: (value: Choices) => void;
-  extras: string[]; // 5자리 외에 더 올린 사진 (올린 파일 이름)
+  extras: string[]; // 사진 자리 외에 더 올린 사진 (올린 파일 이름)
   onExtrasChange: (value: string[]) => void;
-  // 불러온 템플릿의 기본 이미지. 있으면 '바꿈'·'되돌리기'의 기준이 assets 기본 사진 대신 템플릿 사진이 된다
-  baseline?: { images: Choices; extras: string[] } | null;
+  // 불러온 템플릿(또는 AI가 배정한) 기본 이미지. 있으면 '바꿈'·'되돌리기'의 기준이 assets 기본 사진 대신 이것이 된다
+  baseline?: { images: Choices; extras: string[]; label: string } | null;
+  // 사진 자리를 정하는 제품 프로필. null이면 Fold 기본 자리 + assets/product 기본 사진
+  profile: ProductProfile | null;
 }
 
 const ACCEPT = "image/png,image/jpeg,image/webp";
 const EXTRA = "extra"; // 추가 사진을 올리는 중일 때 uploading 값
 
-/** ③ 이미지 생성 때 이미지 모델에 함께 보내는 공식 제품 사진(기본 이미지) 5자리. 자리마다 다른 사진을 올리거나 지울 수 있고,
+/** ③ 이미지 생성 때 이미지 모델에 함께 보내는 공식 제품 사진(기본 이미지). 자리는 제품 프로필이 정한다. 자리마다 다른 사진을 올리거나 지울 수 있고,
  * 다른 각도·디테일 사진을 MAX_EXTRA_PRODUCT_IMAGES장까지 더 올릴 수 있다. 고를 때마다 서버가 해상도·장 수를 검사한다. */
-export default function ProductImagesField({ value, onChange, extras, onExtrasChange, baseline = null }: Props) {
-  const [slots, setSlots] = useState<ProductImage[]>([]);
+export default function ProductImagesField({ value, onChange, extras, onExtrasChange, baseline = null, profile }: Props) {
+  const [foldSlots, setFoldSlots] = useState<ProductImage[]>([]);
   const [uploading, setUploading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [check, setCheck] = useState<ImageCheck | null>(null);
 
   useEffect(() => {
-    api.getProductImages().then(setSlots, (e: Error) => setError(e.message));
+    api.getProductImages().then(setFoldSlots, (e: Error) => setError(e.message));
   }, []);
 
   // 사진을 바꿀 때마다 다시 검사한다 (연달아 바꾸면 마지막 것만)
   useEffect(() => {
     let stale = false;
     const timer = window.setTimeout(() => {
-      api.checkProductImages(value, extras).then((result) => !stale && setCheck(result), () => null);
+      api.checkProductImages(value, extras, profile).then((result) => !stale && setCheck(result), () => null);
     }, 300);
     return () => {
       stale = true;
       window.clearTimeout(timer);
     };
-  }, [value, extras]);
+  }, [value, extras, profile]);
+
+  const slots: ProductImage[] = profile
+    ? profile.photo_slots.map((slot) => ({ role: slot.key, label: slot.label, default_url: null }))
+    : foldSlots;
 
   // 이 자리의 기준값: 템플릿이 있으면 템플릿 사진(없으면 null = 사진 없음), 없으면 undefined = assets 기본 사진
   const baseOf = (role: string) => (baseline ? (baseline.images[role] ?? null) : undefined);
-  const sourceLabel = baseline ? "템플릿 사진" : "기본 사진";
+  const sourceLabel = baseline ? baseline.label : "기본 사진";
 
   const urlOf = (slot: ProductImage) => {
     const choice = value[slot.role];

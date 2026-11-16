@@ -116,12 +116,51 @@ export interface RunInput {
   pods: PodInput[]; // 기본 순서대로
   // 공식 제품 사진을 바꾸거나 지운 자리만 적는다. 없는 자리 = 기본 사진, null = 지움, 문자열 = 올린 파일 이름
   product_images?: Partial<Record<string, string | null>>;
-  // 5자리 외에 더 올린 제품 사진 파일 이름 (최대 MAX_EXTRA_PRODUCT_IMAGES장)
+  // 사진 자리 외에 더 올린 제품 사진 파일 이름 (최대 MAX_EXTRA_PRODUCT_IMAGES장)
   extra_product_images?: string[];
+  // 제품 프로필(프롬프트의 제품별 블록). null이면 서버가 Galaxy Z Fold 기본 프로필을 쓴다
+  profile?: ProductProfile | null;
 }
 
-// 공식 제품 사진 자리 (backend/app/core/domain.py PRODUCT_IMAGE_LABELS)
-export const PRODUCT_IMAGE_ROLES = ["closed_front", "closed_back", "closed_views", "unfolded", "color_lineup"];
+/** 제품 프로필 = 프롬프트의 제품별 블록 (backend/app/core/profile.py). 사진 자리와 제품 상태를 정한다 */
+export interface PhotoSlot {
+  key: string;
+  label: string;
+  caption: string; // 이미지 모델에 사진과 함께 보내는 영어 설명
+  required: boolean;
+}
+
+export interface ProductState {
+  key: string;
+  label: string;
+  brief_hint: string;
+  rules: string;
+  shows_screen: boolean;
+  orientation: "portrait" | "landscape" | "any";
+  photos: string[]; // 사진 자리 key, 첫 번째가 주 참조
+}
+
+export interface ProductProfile {
+  device_noun: string;
+  device_rules: string;
+  screen_rules: string;
+  check: string;
+  edit_rules: string;
+  photo_slots: PhotoSlot[];
+  states: ProductState[];
+  reference_color: string;
+  color_slot: string | null;
+  copy_terms: string;
+}
+
+/** POST /api/profiles/generate: 올린 사진으로 AI가 만든 프로필과 사진 배정 */
+export interface ProfileResult {
+  profile: ProductProfile;
+  product_images: Record<string, string>;
+  extra_product_images: string[];
+  pod_visuals: Record<string, string>;
+  warnings: string[];
+}
 
 /** POST /api/product-images/check (backend/app/core/image_check.py) */
 export interface ImageCheck {
@@ -165,6 +204,7 @@ export interface Template {
   // 기본 이미지. 있는 자리만 적혀 있다 (없는 자리 = 사진 없음). 값은 올린 파일 이름
   product_images: Record<string, string>;
   extra_product_images: string[];
+  profile: ProductProfile | null; // 지금 쓰는 버전 (없으면 Fold 기본 프로필)
   updated_at: string;
   updated_by: string | null;
 }

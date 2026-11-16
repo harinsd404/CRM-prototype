@@ -55,8 +55,9 @@
 | `pods[].key` | string | – | 영문 이름(소문자·숫자·`_`·`-`). 최종 이미지 파일명(`P1_1_design.png`)에 쓴다. 비우면 `pod1`, `pod2` … |
 | `pods[].spec` | string | – | Pod별 스펙(Fact). 카피의 팩트체크 근거는 이 원문과 대조된다 |
 | `pods[].visual` | string | – | ③ 이미지 기본 연출 방향 |
-| `product_images` | `{자리: string \| null}` | – (기본 `{}`) | 공식 제품 사진을 바꾸거나 지운 자리만. 자리 = `closed_front` · `closed_back` · `closed_views` · `unfolded` · `color_lineup`. 없는 자리 = `assets/product`의 기본 사진, `null` = 지움, 문자열 = `POST /api/uploads`가 돌려준 파일 이름. 실행을 만들 때 `data/runs/{run_id}/product/`로 복사해 ③에서 쓴다 |
-| `extra_product_images` | string[] | – (기본 `[]`) | 5자리 외에 더 올린 제품 사진(다른 각도·디테일). `POST /api/uploads`의 파일 이름, **최대 5장** (넘으면 422). `product/extra_1.jpg …`로 복사해 ③에서 ① 사진 뒤에 보조 참조로 보낸다 |
+| `product_images` | `{자리: string \| null}` | – (기본 `{}`) | 공식 제품 사진을 바꾸거나 지운 자리만. 자리 = 제품 프로필의 `photo_slots[].key` (Fold: `closed_front` · `closed_back` · `closed_views` · `unfolded` · `color_lineup`). 없는 자리 = `assets/product`의 기본 사진(`profile`이 없을 때만), `null` = 지움, 문자열 = `POST /api/uploads`가 돌려준 파일 이름. 실행을 만들 때 `data/runs/{run_id}/product/`로 복사해 ③에서 쓴다 |
+| `profile` | `ProductProfile` \| null | – | 제품 프로필(프롬프트의 제품별 블록, 아래). 템플릿에서 불러오거나 AI가 사진으로 만든다. null이면 Galaxy Z Fold 프로필 |
+| `extra_product_images` | string[] | – (기본 `[]`) | 사진 자리 외에 더 올린 제품 사진(다른 각도·디테일). `POST /api/uploads`의 파일 이름, **최대 5장** (넘으면 422). `product/extra_1.jpg …`로 복사해 ③에서 ① 사진 뒤에 보조 참조로 보낸다 |
 
 입력 화면에서 템플릿을 고르면 템플릿의 기본 이미지로 `product_images`(모든 자리, 템플릿에 없는 자리는 `null`)와 `extra_product_images`를 채운다.
 `POST /api/product-images/check`는 같은 두 값을 받아 해상도(긴 변 1000px 미만)·필수 자리(접은 앞면·뒷면·펼친 상태)·장 수(4장 미만)를 검사해 경고만 돌려준다 (AI 없이 코드로).
@@ -527,7 +528,7 @@ crm-20261027-091857-365eae.zip
 
 | 경로 | 내용 |
 |---|---|
-| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `templates`·`template_pods`·`template_images`(제품 템플릿과 Pod·기본 이미지, 모두가 함께 씀. 처음 켤 때 Galaxy Z Fold와 `assets/product` 사진을 넣는다. 사진 파일은 `data/uploads/`) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`, 불러온 `template_id`) · `feedback`(피드백, 아래) |
+| `backend/data/app.db` (SQLite) | `users`(계정) · `sessions`(로그인) · `templates`·`template_pods`·`template_images`(제품 템플릿과 Pod·기본 이미지, 모두가 함께 씀. 처음 켤 때 Galaxy Z Fold와 `assets/product` 사진을 넣는다. 사진 파일은 `data/uploads/`) · `runs`(실행별 `RunState` 전체를 `state` 칸에 JSON으로, 소유자 `user_id`, 불러온 `template_id`) · `feedback`(피드백, 아래) · `profile_versions`(템플릿의 제품 프로필 버전: active 지금 것 / archived 예전 것 / proposed AI 개선안) |
 | `backend/data/runs/{run_id}/product/` | 실행을 만들 때 복사한 제품 사진 |
 | `backend/data/runs/{run_id}/images/` | 생성된 이미지 (`.png`, placeholder 모드는 `.svg`) |
 | `backend/data/runs/{run_id}/html_input.json` | 7-1 |
@@ -566,3 +567,24 @@ crm-20261027-091857-365eae.zip
 | `status` | `open` `applied` `dismissed` | 확인 전 / 반영함 / 보류. 템플릿을 함께 쓰므로 누구나 바꿀 수 있다 |
 
 API: `POST·GET /api/runs/{id}/feedback`(내 실행) · `GET /api/feedback?template_id=&no_template=&status=&source=`(모든 사용자) · `GET /api/feedback/export`(같은 조건, CSV) · `PATCH /api/feedback/{id}`(`{status}`) · `DELETE /api/feedback/{id}`(내가 남긴 것만).
+
+
+## 제품 프로필 — `ProductProfile`
+
+`backend/app/core/profile.py`. 프롬프트는 **공통 골격**(prompts/*.md: 역할·레이아웃·출력 형식·사진 품질·글자 없음 같은 안전 규칙, 모든 제품이 같음)과
+**제품별 블록**(이 규격)으로 나뉜다. Galaxy Z Fold 프로필(`FOLD_PROFILE`)은 지금까지 코드·프롬프트에 박혀 있던 규칙을 그대로 옮긴 것이다.
+
+| 필드 | 언어 | 쓰는 곳 |
+|---|---|---|
+| `device_noun` | 영어 | 이미지 프롬프트 첫 문장, 연출안 프롬프트 |
+| `device_rules` | 영어 | 이미지 프롬프트 `# Device` (몸체 색은 `[제품 컬러]`) |
+| `states[]` | key·rules 영어, label·brief_hint 한국어 | 연출안의 `state`, 이미지 프롬프트의 상태 규칙. `shows_screen`·`orientation`은 코드가 연출안을 맞출 때, `photos`(첫 번째 = 주 참조)는 참조 사진 고를 때 |
+| `photo_slots[]` | label 한국어, caption 영어 | 입력 화면의 사진 칸, 이미지 모델에 사진과 함께 보내는 설명. `required`·주 참조 자리가 비면 경고 |
+| `screen_rules` | 영어 | 화면이 보이는 상태일 때 `# Screen` |
+| `check`, `edit_rules` | 영어 | 이미지 프롬프트 마지막 확인 줄, 이미지 수정 때 지킬 규칙 |
+| `reference_color`, `color_slot` | | 사진 속 제품 컬러가 아니면 컬러 라인업 사진도 함께 보낸다 |
+| `copy_terms` | 한국어 | ② 카피 프롬프트의 "그대로 쓸 공식 표기" |
+
+`POST /api/profiles/generate`(`{product_name, colors, pods, images}`)는 올린 사진(최대 10장)과 제품 정보를 Vertex Gemini에 보내 이 규격으로 받는다.
+규격(키 형식, 상태가 가리키는 사진 자리)은 코드가 검사해 어기면 다시 생성한다. 사진마다 자리를 배정해 돌려주고(`product_images`, 남는 사진은 `extra_product_images`),
+Pod별 기본 연출(`pod_visuals`)과 사진이 부족하거나 흐린 점(`warnings`)도 함께 준다. 주 참조 사진이 없는 상태는 빼고 알린다.

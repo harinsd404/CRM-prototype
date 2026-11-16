@@ -1,17 +1,19 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
-import {
-  PRODUCT_IMAGE_ROLES,
-  type Mood,
-  type PodName,
-  type RunInput,
-  type RunState,
-  type Template,
-  type TemplatePod,
-  type TemplateSummary,
+import type {
+  Mood,
+  PodName,
+  ProductProfile,
+  ProfileResult,
+  RunInput,
+  RunState,
+  Template,
+  TemplatePod,
+  TemplateSummary,
 } from "../types";
 import PodsField, { podsValid } from "./PodsField";
 import ProductImagesField from "./ProductImagesField";
+import ProfileField from "./ProfileField";
 
 interface Props {
   initial: RunInput | null; // 다시 시작하기·다른 페르소나로: 그 실행의 입력을 채워 둔다
@@ -33,14 +35,21 @@ const EMPTY: Fields = {
   colors: "",
   product_images: {},
   extra_product_images: [],
+  profile: null,
 };
 
 const toRows = (template: Template): TemplatePod[] => template.pods.map((pod) => ({ ...pod }));
 
-// 템플릿의 기본 이미지를 입력 형식으로: 모든 자리를 적는다 (템플릿에 없는 자리 = null, assets의 Fold 사진을 쓰지 않게)
-const templateImages = (template: Template) => ({
-  images: Object.fromEntries(PRODUCT_IMAGE_ROLES.map((role) => [role, template.product_images[role] ?? null])),
+type Baseline = { images: Record<string, string | null>; extras: string[]; label: string };
+
+// 배정된 사진을 입력 형식으로: 프로필의 모든 자리를 적는다 (사진이 없는 자리 = null, assets의 Fold 사진을 쓰지 않게)
+const slotImages = (profile: ProductProfile, images: Record<string, string>) =>
+  Object.fromEntries(profile.photo_slots.map((slot) => [slot.key, images[slot.key] ?? null]));
+
+const templateBaseline = (template: Template, fallback: ProductProfile): Baseline => ({
+  images: slotImages(template.profile ?? fallback, template.product_images),
   extras: [...template.extra_product_images],
+  label: "템플릿 사진",
 });
 
 export default function InputForm({ initial, onCreated }: Props) {
@@ -48,14 +57,29 @@ export default function InputForm({ initial, onCreated }: Props) {
   const [rows, setRows] = useState<TemplatePod[]>(() => initial?.pods.map((pod) => ({ ...pod, enabled: true })) ?? []);
   const [templates, setTemplates] = useState<TemplateSummary[] | null>(null);
   const [template, setTemplate] = useState<Template | null>(null); // 불러온 템플릿 (되돌리기용)
+  const [defaultProfile, setDefaultProfile] = useState<ProductProfile | null>(null); // Fold (프로필이 없을 때)
+  const [baseline, setBaseline] = useState<Baseline | null>(null); // 사진 칸의 '되돌리기' 기준
+  const [profileSource, setProfileSource] = useState(initial?.profile ? "이전 실행의 규칙" : "기본 (Galaxy Z Fold)");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.listTemplates().then(setTemplates, (e: Error) => setError(e.message));
-    // 다른 페르소나로 만들 때도 템플릿 내용으로 되돌릴 수 있게 그 템플릿을 불러 둔다
-    if (initial?.template_id != null) api.getTemplate(initial.template_id).then(setTemplate, () => null);
+    Promise.all([
+      api.defaultProfile(),
+      // 다른 페르소나로 만들 때도 템플릿 내용으로 되돌릴 수 있게 그 템플릿을 불러 둔다
+      initial?.template_id != null ? api.getTemplate(initial.template_id).catch(() => null) : null,
+    ]).then(([fold, loaded]) => {
+      setDefaultProfile(fold);
+      if (loaded) {
+        setTemplate(loaded);
+        setBaseline(templateBaseline(loaded, fold));
+        setProfileSource(`템플릿 '${loaded.name}'`);
+      }
+    }, (e: Error) => setError(e.message));
   }, [initial]);
+
+  const profile = fields.profile ?? defaultProfile;
 
   const set = <K extends keyof Fields>(key: K, value: Fields[K]) => setFields((prev) => ({ ...prev, [key]: value }));
 
@@ -72,21 +96,47 @@ export default function InputForm({ initial, onCreated }: Props) {
     }
     try {
       const loaded = await api.getTemplate(id);
+      const base = templateBaseline(loaded, defaultProfile ?? (await api.defaultProfile()));
       setTemplate(loaded);
+      setBaseline(base);
+      setProfileSource(`템플릿 '${loaded.name}'`);
       setFields((prev) => ({
         ...prev,
         template_id: loaded.id,
         product_name: loaded.product_name,
         colors: loaded.colors,
         used_first_pod: null,
-        product_images: templateImages(loaded).images,
-        extra_product_images: templateImages(loaded).extras,
+        product_images: base.images,
+        extra_product_images: base.extras,
+        profile: loaded.profile,
       }));
       setRows(toRows(loaded));
     } catch (err) {
       setError((err as Error).message);
     }
   };
+
+  // AI가 새 제품 규칙을 만들면: 프로필·사진 배정을 채우고, 비어 있는 Pod 기본 연출도 채운다
+  const applyGenerated = (result: ProfileResult) => {
+    const images = slotImages(result.profile, result.product_images);
+    setFields((prev) => ({
+      ...prev,
+      profile: result.profile,
+      product_images: images,
+      extra_product_images: result.extra_product_images,
+    }));
+    setBaseline({ images, extras: result.extra_product_images, label: "AI가 배정한 사진" });
+    setProfileSource("AI가 사진으로 만듦 (템플릿으로 저장하면 다음에 불러올 수 있음)");
+    setRows((prev) =>
+      prev.map((row) => (row.visual.trim() || !result.pod_visuals[row.name] ? row : { ...row, visual: result.pod_visuals[row.name] })),
+    );
+  };
+
+  // AI 생성의 첫 후보: 지금 사진 칸에 있는 올린 사진들
+  const currentPhotos = [
+    ...Object.values(fields.product_images ?? {}).filter((name): name is string => !!name),
+    ...(fields.extra_product_images ?? []),
+  ];
 
   const usedPods = rows.filter((row) => row.enabled && row.name.trim());
   const canSubmit = podsValid(rows) && usedPods.some((row) => row.spec.trim());
@@ -196,12 +246,25 @@ export default function InputForm({ initial, onCreated }: Props) {
 
       <PodsField rows={rows} onChange={setRows} onReset={template ? () => setRows(toRows(template)) : undefined} />
 
+      <ProfileField
+        profile={profile}
+        source={profileSource}
+        product={{
+          product_name: fields.product_name,
+          colors: fields.colors,
+          pods: usedPods.map((row) => ({ name: row.name.trim(), spec: row.spec })),
+        }}
+        currentPhotos={currentPhotos}
+        onGenerated={applyGenerated}
+      />
+
       <ProductImagesField
         value={fields.product_images ?? {}}
         onChange={(value) => set("product_images", value)}
         extras={fields.extra_product_images ?? []}
         onExtrasChange={(value) => set("extra_product_images", value)}
-        baseline={template ? templateImages(template) : null}
+        baseline={baseline}
+        profile={fields.profile ?? null}
       />
 
       {error && <p className="text-sm text-danger">{error}</p>}

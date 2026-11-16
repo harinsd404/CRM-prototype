@@ -86,6 +86,23 @@ class TemplateImage(Base):
     position: Mapped[int] = mapped_column(default=0)
 
 
+class ProfileVersion(Base):
+    """템플릿의 제품 프로필(프롬프트의 제품별 블록) 버전. active가 지금 쓰는 것, archived는 예전 것(되돌리기용),
+    proposed는 피드백을 보고 AI가 낸 개선안(승인 전). source: seed / ai(제품 사진으로 생성) / manual / feedback / run."""
+
+    __tablename__ = "profile_versions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey("templates.id", ondelete="CASCADE"), index=True)
+    version: Mapped[int]
+    profile: Mapped[str] = mapped_column(Text)  # ProductProfile JSON
+    status: Mapped[str] = mapped_column(String(10), default="active")
+    source: Mapped[str] = mapped_column(String(10), default="manual")
+    note: Mapped[str] = mapped_column(Text, default="")  # 무엇을 왜 바꿨는지
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.now)
+
+
 class Run(Base):
     __tablename__ = "runs"
 

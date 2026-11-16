@@ -8,7 +8,6 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.core.db import Run, session_scope
-from app.core.domain import PRODUCT_IMAGE_LABELS
 from app.core.state import RunInput, RunState
 
 _RUN_ID = re.compile(r"^[\w-]+$")
@@ -52,12 +51,12 @@ def save_as_upload(source: Path) -> str:
     return name
 
 
-def run_product_images_as_uploads(run_id: str) -> tuple[dict[str, str], list[str]]:
+def run_product_images_as_uploads(run: RunState) -> tuple[dict[str, str], list[str]]:
     """실행에 복사해 둔 제품 사진을 올린 사진으로 다시 복사한다 (실행을 템플릿으로 저장할 때).
     돌려주는 값은 RunInput.product_images / extra_product_images와 같은 모양."""
-    folder = product_image_dir(run_id)
+    folder = product_image_dir(run.id)
     images: dict[str, str] = {}
-    for role in PRODUCT_IMAGE_LABELS:
+    for role in run.input.product_profile.slot_labels():
         if source := next((folder / f"{role}{s}" for s in IMAGE_SUFFIXES if (folder / f"{role}{s}").exists()), None):
             images[role] = save_as_upload(source)
     extras = sorted(
@@ -73,13 +72,13 @@ def _copy_product_images(run_input: RunInput, folder: Path) -> None:
     upload = upload_path
 
     sources: dict[str, Path] = {}
-    for role in PRODUCT_IMAGE_LABELS:
-        choice = run_input.product_images.get(role, "")  # 없는 자리 = 기본 사진
+    for role in run_input.product_profile.slot_labels():
+        choice = run_input.product_images.get(role, "")  # 없는 자리 = 기본 사진 (Fold 기본 프로필일 때만)
         if choice is None:
             continue
         if choice:
             sources[role] = upload(choice)
-        elif default := default_product_image(role):
+        elif run_input.profile is None and (default := default_product_image(role)):
             sources[role] = default
     for i, name in enumerate(run_input.extra_product_images, start=1):
         sources[f"{EXTRA_PREFIX}{i}"] = upload(name)

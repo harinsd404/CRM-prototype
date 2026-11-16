@@ -11,11 +11,9 @@ from pathlib import Path
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 
-from app.core.domain import PRODUCT_IMAGE_LABELS
+from app.core.profile import ProductProfile
 from app.core.store import default_product_image, upload_path
 
-# 이 자리가 비면 그 제품 상태(접은 앞면·뒷면·펼친 상태)의 이미지를 만들 수 없다 (steps/image.py _PRODUCT_REFERENCES)
-REQUIRED_ROLES = ("closed_front", "closed_back", "unfolded")
 MIN_LONG_SIDE = 1000
 MIN_IMAGES = 4  # 필수 3자리 + 측면이나 컬러 등 1장 이상
 
@@ -52,11 +50,15 @@ def _info(path: Path, label: str, warnings: list[str]) -> ImageInfo | None:
     return ImageInfo(width=width, height=height, warning=warning)
 
 
-def check_product_images(product_images: dict[str, str | None], extras: list[str]) -> ImageCheck:
-    """product_images는 RunInput과 같은 뜻: 없는 자리 = assets/product 기본 사진, None = 지움, 문자열 = 올린 파일."""
+def check_product_images(
+    product_images: dict[str, str | None], extras: list[str], profile: ProductProfile, use_defaults: bool
+) -> ImageCheck:
+    """product_images는 RunInput과 같은 뜻: 없는 자리 = assets/product 기본 사진(use_defaults일 때만), None = 지움,
+    문자열 = 올린 파일. 필수 자리는 제품 프로필에서 상태의 주 참조로 쓰이는 자리다."""
     images: dict[str, ImageInfo] = {}
     warnings: list[str] = []
-    for role, label in PRODUCT_IMAGE_LABELS.items():
+    required = profile.required_slots()
+    for role, label in profile.slot_labels().items():
         choice = product_images.get(role, "")
         path = None
         if choice:
@@ -64,10 +66,10 @@ def check_product_images(product_images: dict[str, str | None], extras: list[str
                 path = upload_path(choice)
             except ValueError:
                 warnings.append(f"{label}: 올린 사진을 찾을 수 없습니다.")
-        elif choice is not None:
+        elif choice is not None and use_defaults:
             path = default_product_image(role)
         if path is None:
-            if role in REQUIRED_ROLES:
+            if role in required:
                 warnings.append(f"{label} 사진이 없으면 그 상태의 제품 이미지는 만들 수 없습니다.")
             continue
         if info := _info(path, label, warnings):
