@@ -88,7 +88,8 @@ class TemplateImage(Base):
 
 class ProfileVersion(Base):
     """템플릿의 제품 프로필(프롬프트의 제품별 블록) 버전. active가 지금 쓰는 것, archived는 예전 것(되돌리기용),
-    proposed는 피드백을 보고 AI가 낸 개선안(승인 전). source: seed / ai(제품 사진으로 생성) / manual / feedback / run."""
+    proposed는 피드백을 보고 AI가 낸 개선안(승인 전), rejected는 거절한 개선안.
+    source: seed / ai(제품 사진으로 생성) / manual(고급 모드에서 고침) / feedback(피드백 개선안) / run(실행을 템플릿으로 저장)."""
 
     __tablename__ = "profile_versions"
 
@@ -99,6 +100,7 @@ class ProfileVersion(Base):
     status: Mapped[str] = mapped_column(String(10), default="active")
     source: Mapped[str] = mapped_column(String(10), default="manual")
     note: Mapped[str] = mapped_column(Text, default="")  # 무엇을 왜 바꿨는지
+    feedback_ids: Mapped[str] = mapped_column(Text, default="")  # 개선안이 반영한 피드백 id (쉼표 구분)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(default=datetime.now)
 
@@ -166,6 +168,9 @@ def _add_missing_columns() -> None:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(runs)")}
         if "template_id" not in columns:
             conn.exec_driver_sql("ALTER TABLE runs ADD COLUMN template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL")
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(profile_versions)")}
+        if columns and "feedback_ids" not in columns:
+            conn.exec_driver_sql("ALTER TABLE profile_versions ADD COLUMN feedback_ids TEXT NOT NULL DEFAULT ''")
 
 
 @contextmanager

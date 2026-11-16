@@ -73,12 +73,13 @@ def _copy_product_images(run_input: RunInput, folder: Path) -> None:
 
     sources: dict[str, Path] = {}
     for role in run_input.product_profile.slot_labels():
-        choice = run_input.product_images.get(role, "")  # 없는 자리 = 기본 사진 (Fold 기본 프로필일 때만)
+        # 적지 않은 자리 = assets/product 기본 사진 (Fold 자리 이름일 때만 있음). 템플릿·AI 생성은 모든 자리를 적는다
+        choice = run_input.product_images.get(role, "")
         if choice is None:
             continue
         if choice:
             sources[role] = upload(choice)
-        elif run_input.profile is None and (default := default_product_image(role)):
+        elif default := default_product_image(role):
             sources[role] = default
     for i, name in enumerate(run_input.extra_product_images, start=1):
         sources[f"{EXTRA_PREFIX}{i}"] = upload(name)

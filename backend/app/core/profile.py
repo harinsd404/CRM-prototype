@@ -59,6 +59,10 @@ class ProductProfile(BaseModel):
     copy_terms: str = Field(
         default="", description="카피에서 번역·변형하지 않고 그대로 쓸 공식 표기 (한국어 문장, 쉼표로 나열)"
     )
+    # 제품별 가이드 (한국어). 공통 프롬프트의 규칙 안에서 이 제품에 맞게 덧붙이는 지침. 피드백으로 고쳐 나가는 곳
+    pod_guide: str = Field(default="", description="① Pod 순서·레이아웃 기획에 덧붙이는 이 제품의 지침")
+    copy_guide: str = Field(default="", description="② 카피에 덧붙이는 이 제품의 지침 (톤, 피할 표현 등)")
+    visual_guide: str = Field(default="", description="③ 이미지 연출안에 덧붙이는 이 제품의 지침 (장면, 소품, 피할 연출 등)")
 
     @model_validator(mode="after")
     def _check(self) -> "ProductProfile":
@@ -82,6 +86,10 @@ class ProductProfile(BaseModel):
         if COLOR_TOKEN not in self.device_rules:
             self.device_rules = f"{self.device_rules.rstrip()}\n- Body color exactly {COLOR_TOKEN}."
         return self
+
+    def guide(self, name: str) -> str:
+        """프롬프트에 넣을 가이드. 비어 있으면 '(없음)'."""
+        return getattr(self, f"{name}_guide").strip() or "(없음)"
 
     def state(self, key: str) -> ProductState:
         return next((s for s in self.states if s.key == key), self.states[0])

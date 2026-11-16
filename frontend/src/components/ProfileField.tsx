@@ -2,6 +2,7 @@ import { useState, type ChangeEvent } from "react";
 import { api, withBase } from "../api";
 import type { ProductProfile, ProfileResult } from "../types";
 import { Spinner } from "./icons";
+import ProfileEditor from "./ProfileEditor";
 
 const MAX_PROFILE_IMAGES = 10; // backend/app/steps/profile.py MAX_PROFILE_IMAGES
 const ACCEPT = "image/png,image/jpeg,image/webp";
@@ -12,11 +13,12 @@ interface Props {
   product: { product_name: string; colors: string; pods: { name: string; spec: string }[] };
   currentPhotos: string[]; // 지금 사진 칸에 있는 올린 사진들 (AI 생성의 첫 후보)
   onGenerated: (result: ProfileResult) => void;
+  onEdit?: (profile: ProductProfile) => void; // 고급 모드: 이번 실행의 규칙을 항목 단위로 고친다
 }
 
 /** 제품 프로필(프롬프트의 제품별 블록). 템플릿에서 오거나, 새 제품이면 올린 사진으로 AI가 만든다.
  * AI는 사진마다 자리(정면·뒷면 등)를 정하고 제품 상태와 기기 묘사를 쓰며, 사진이 부족하면 경고한다. */
-export default function ProfileField({ profile, source, product, currentPhotos, onGenerated }: Props) {
+export default function ProfileField({ profile, source, product, currentPhotos, onGenerated, onEdit }: Props) {
   const [open, setOpen] = useState(false); // AI로 만들기 칸
   const [details, setDetails] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -90,9 +92,17 @@ export default function ProfileField({ profile, source, product, currentPhotos, 
               {profile.photo_slots.map((s) => s.label).join(" · ")}
             </p>
             <button type="button" onClick={() => setDetails(!details)} className="mt-1 text-xs text-gray-500 hover:text-gray-900">
-              {details ? "자세히 접기" : "자세히 보기"}
+              {details ? "자세히 접기" : onEdit ? "자세히 보기 · 이번 실행만 고치기" : "자세히 보기"}
             </button>
-            {details && (
+            {details && onEdit && (
+              <div className="mt-2">
+                <p className="mb-2 text-xs text-gray-500">
+                  고급 모드: 여기서 고친 규칙은 이번 실행에만 쓰입니다. 템플릿에 남기려면 실행 화면에서 템플릿으로 저장하세요.
+                </p>
+                <ProfileEditor value={profile} onChange={onEdit} />
+              </div>
+            )}
+            {details && !onEdit && (
               <div className="mt-2 space-y-2 text-xs text-gray-600">
                 <pre className="whitespace-pre-wrap rounded bg-gray-50 p-2"># Device{"\n"}{profile.device_rules}</pre>
                 {profile.states.map((state) => (

@@ -79,6 +79,7 @@ class PodStep(TextStep):
             "base_order": " → ".join(names),
             "move_rule": move_rule,
             "min_layouts": str(rules.min_layouts),
+            "pod_guide": run.input.product_profile.guide("pod"),
         }
 
     def check_output(self, run: RunState, slot: str, content: PodOption) -> None:

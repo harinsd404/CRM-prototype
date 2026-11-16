@@ -239,6 +239,7 @@ class ImageStep(Step):
             "body": copy["body"],
             "device_noun": profile.device_noun,
             "state_guide": state_guide(profile),
+            "visual_guide": profile.guide("visual"),
         }
 
     async def generate_slot(

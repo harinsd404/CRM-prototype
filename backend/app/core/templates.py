@@ -37,8 +37,6 @@ class TemplateData(BaseModel):
         self.name = self.name.strip()
         if unknown := set(self.product_images) - set((self.profile or FOLD_PROFILE).slot_labels()):
             raise ValueError(f"알 수 없는 사진 자리: {', '.join(sorted(unknown))}")
-        for name in [*self.product_images.values(), *self.extra_product_images]:
-            upload_path(name)  # 없는 파일이면 ValueError
         names = [pod.name for pod in self.pods]
         if len(set(names)) < len(names):
             raise ValueError("Pod 이름이 겹칩니다.")
@@ -148,6 +146,9 @@ def get_template(template_id: int) -> TemplateOut | None:
 
 
 def _apply(template: Template, data: TemplateData) -> None:
+    # 저장할 때만 파일을 확인한다 (읽을 때 확인하면 사진 하나가 지워져도 템플릿을 열 수 없게 된다)
+    for name in [*data.product_images.values(), *data.extra_product_images]:
+        upload_path(name)  # 없는 파일이면 ValueError
     template.name = data.name
     template.product_name = data.product_name.strip()
     template.colors = data.colors.strip()
@@ -243,3 +244,107 @@ def template_data_from_run(run: RunState, name: str, base: TemplateOut | None) -
         extra_product_images=extras[:MAX_EXTRA_PRODUCT_IMAGES],
         profile=run.input.product_profile,
     )
+
+
+# ── 제품 프로필 버전 (고급 모드) ─────────────────────────────────────────
+
+
+class ProfileVersionOut(BaseModel):
+    version: int
+    status: str  # active / archived / proposed / rejected
+    source: str
+    note: str
+    feedback_ids: list[int]
+    created_by: str | None
+    created_at: datetime
+    profile: ProductProfile
+
+
+def list_profile_versions(template_id: int) -> list[ProfileVersionOut]:
+    """최근 버전부터."""
+    with session_scope() as db:
+        versions = db.scalars(
+            select(ProfileVersion).where(ProfileVersion.template_id == template_id).order_by(ProfileVersion.version.desc())
+        ).all()
+        usernames = _usernames(db, {v.created_by for v in versions})
+        return [
+            ProfileVersionOut(
+                version=v.version,
+                status=v.status,
+                source=v.source,
+                note=v.note,
+                feedback_ids=[int(i) for i in v.feedback_ids.split(",") if i],
+                created_by=usernames.get(v.created_by) if v.created_by else None,
+                created_at=v.created_at,
+                profile=ProductProfile.model_validate_json(v.profile),
+            )
+            for v in versions
+        ]
+
+
+def save_profile(template_id: int, profile: ProductProfile, user_id: int, note: str, source: str = "manual") -> bool:
+    """고급 모드에서 고친 프로필을 새 active 버전으로. 템플릿이 없으면 False."""
+    with session_scope() as db:
+        template = db.get(Template, template_id)
+        if template is None:
+            return False
+        _check_slots_kept(db, template, profile)
+        _set_profile(db, template_id, profile, user_id, source, note)
+        template.updated_by, template.updated_at = user_id, datetime.now()
+        return True
+
+
+def _check_slots_kept(db, template: Template, profile: ProductProfile) -> None:
+    """템플릿에 사진이 들어 있는 자리를 프로필에서 지우면 그 사진이 갈 곳이 없다."""
+    slots = set(profile.slot_labels())
+    if missing := sorted({i.role for i in template.images if i.role != EXTRA_ROLE} - slots):
+        raise ValueError(f"사진이 있는 자리를 지울 수 없습니다: {', '.join(missing)} (먼저 템플릿 사진을 바꿔 주세요)")
+
+
+def add_proposal(template_id: int, profile: ProductProfile, user_id: int, note: str, feedback_ids: list[int]) -> int:
+    """AI 개선안을 proposed 버전으로 넣는다 (승인 전까지 쓰이지 않는다). 예전 개선안은 rejected로 정리한다."""
+    with session_scope() as db:
+        for old in db.scalars(
+            select(ProfileVersion).where(ProfileVersion.template_id == template_id, ProfileVersion.status == "proposed")
+        ):
+            old.status = "rejected"
+        last = db.scalar(select(func.max(ProfileVersion.version)).where(ProfileVersion.template_id == template_id)) or 0
+        db.add(
+            ProfileVersion(
+                template_id=template_id, version=last + 1, profile=profile.model_dump_json(), status="proposed",
+                source="feedback", note=note, feedback_ids=",".join(map(str, feedback_ids)), created_by=user_id,
+            )
+        )
+        return last + 1
+
+
+def activate_version(template_id: int, version: int, user_id: int) -> ProfileVersionOut | None:
+    """예전 버전으로 되돌리거나(archived) 개선안을 승인한다(proposed). 지금 active는 archived가 된다."""
+    with session_scope() as db:
+        target = db.scalar(
+            select(ProfileVersion).where(ProfileVersion.template_id == template_id, ProfileVersion.version == version)
+        )
+        template = db.get(Template, template_id)
+        if target is None or template is None or target.status in ("active", "rejected"):
+            return None
+        _check_slots_kept(db, template, ProductProfile.model_validate_json(target.profile))
+        if current := active_profile(db, template_id):
+            current.status = "archived"
+        target.status = "active"
+        template.updated_by, template.updated_at = user_id, datetime.now()
+    return next(v for v in list_profile_versions(template_id) if v.version == version)
+
+
+def reject_version(template_id: int, version: int) -> bool:
+    with session_scope() as db:
+        target = db.scalar(
+            select(ProfileVersion).where(
+                ProfileVersion.template_id == template_id,
+                ProfileVersion.version == version,
+                ProfileVersion.status == "proposed",
+            )
+        )
+        if target is None:
+            return False
+        target.status = "rejected"
+        return True

@@ -151,6 +151,22 @@ export interface ProductProfile {
   reference_color: string;
   color_slot: string | null;
   copy_terms: string;
+  // 제품별 가이드 (한국어): ① Pod 기획 / ② 카피 / ③ 연출안 프롬프트 끝에 붙는다
+  pod_guide: string;
+  copy_guide: string;
+  visual_guide: string;
+}
+
+/** 템플릿의 제품 프로필 버전 (backend/app/core/templates.py ProfileVersionOut) */
+export interface ProfileVersion {
+  version: number;
+  status: "active" | "archived" | "proposed" | "rejected";
+  source: "seed" | "ai" | "manual" | "feedback" | "run";
+  note: string;
+  feedback_ids: number[];
+  created_by: string | null;
+  created_at: string;
+  profile: ProductProfile;
 }
 
 /** POST /api/profiles/generate: 올린 사진으로 AI가 만든 프로필과 사진 배정 */

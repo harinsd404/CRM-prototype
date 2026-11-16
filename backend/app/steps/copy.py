@@ -105,6 +105,7 @@ def copy_rule_vars(run: RunState) -> dict[str, str]:
         "max_same_headline_type": str(rules.max_same_headline_type),
         "min_fact_first": str(min(2, rules.count)),
         "official_terms": run.input.product_profile.copy_terms.strip() or "입력 데이터에 나온 기능명",
+        "copy_guide": run.input.product_profile.guide("copy"),
     }
 
 

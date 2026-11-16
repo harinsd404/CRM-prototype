@@ -584,7 +584,22 @@ API: `POST·GET /api/runs/{id}/feedback`(내 실행) · `GET /api/feedback?templ
 | `check`, `edit_rules` | 영어 | 이미지 프롬프트 마지막 확인 줄, 이미지 수정 때 지킬 규칙 |
 | `reference_color`, `color_slot` | | 사진 속 제품 컬러가 아니면 컬러 라인업 사진도 함께 보낸다 |
 | `copy_terms` | 한국어 | ② 카피 프롬프트의 "그대로 쓸 공식 표기" |
+| `pod_guide`, `copy_guide`, `visual_guide` | 한국어 | 제품별 가이드. ① Pod 기획 · ② 카피(수정 포함) · ③ 연출안 프롬프트 끝에 "이 제품의 가이드"로 붙는다 (공통 규칙이 우선). 피드백 개선안이 주로 고치는 곳 |
 
 `POST /api/profiles/generate`(`{product_name, colors, pods, images}`)는 올린 사진(최대 10장)과 제품 정보를 Vertex Gemini에 보내 이 규격으로 받는다.
 규격(키 형식, 상태가 가리키는 사진 자리)은 코드가 검사해 어기면 다시 생성한다. 사진마다 자리를 배정해 돌려주고(`product_images`, 남는 사진은 `extra_product_images`),
 Pod별 기본 연출(`pod_visuals`)과 사진이 부족하거나 흐린 점(`warnings`)도 함께 준다. 주 참조 사진이 없는 상태는 빼고 알린다.
+
+### 고급 모드 — 프로필 버전과 피드백 개선안
+
+헤더의 **고급 모드**를 켜면 **템플릿** 메뉴가 생긴다 (켜짐 여부는 브라우저에만 기억).
+
+| API | 하는 일 |
+|---|---|
+| `GET /api/templates/{id}/profile/versions` | 버전 목록 (최근 것부터). status: active 사용 중 / archived 예전 / proposed 개선안 / rejected 거절 |
+| `PUT /api/templates/{id}/profile` (`{profile, note}`) | 직접 고친 프로필을 새 active 버전으로 (source=manual). 템플릿 사진이 있는 자리를 지우면 400 |
+| `POST /api/templates/{id}/profile/propose` | 이 템플릿의 확인 전 피드백(최근 60건)과 지금 프로필을 Vertex Gemini에 보내 개선안(proposed)을 만든다. 사진 자리 key는 못 바꾸고, 바꿨다고 한 항목이 그대로면 다시 생성한다. 프로필로 고칠 수 없는 피드백은 note에 "개발자 확인"으로 남는다 |
+| `POST /api/templates/{id}/profile/versions/{v}/activate` | 개선안 승인 또는 예전 버전으로 되돌리기. 개선안을 승인하면 반영한 피드백을 `applied`로 바꾼다 |
+| `POST /api/templates/{id}/profile/versions/{v}/reject` | 개선안 거절 |
+
+입력 화면에서도 고급 모드면 **제품 규칙 → 이번 실행만 고치기**로 그 실행에만 쓰는 프로필을 고칠 수 있다 (템플릿에 남기려면 실행에서 템플릿으로 저장).

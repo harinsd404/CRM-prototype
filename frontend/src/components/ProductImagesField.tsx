@@ -12,7 +12,7 @@ interface Props {
   onExtrasChange: (value: string[]) => void;
   // 불러온 템플릿(또는 AI가 배정한) 기본 이미지. 있으면 '바꿈'·'되돌리기'의 기준이 assets 기본 사진 대신 이것이 된다
   baseline?: { images: Choices; extras: string[]; label: string } | null;
-  // 사진 자리를 정하는 제품 프로필. null이면 Fold 기본 자리 + assets/product 기본 사진
+  // 사진 자리를 정하는 제품 프로필. null이면 Fold 기본 자리
   profile: ProductProfile | null;
 }
 
@@ -43,8 +43,10 @@ export default function ProductImagesField({ value, onChange, extras, onExtrasCh
     };
   }, [value, extras, profile]);
 
+  // 적지 않은 자리는 assets/product 기본 사진을 쓴다 (Fold 자리 이름일 때만 있음)
+  const defaults = Object.fromEntries(foldSlots.map((slot) => [slot.role, slot.default_url]));
   const slots: ProductImage[] = profile
-    ? profile.photo_slots.map((slot) => ({ role: slot.key, label: slot.label, default_url: null }))
+    ? profile.photo_slots.map((slot) => ({ role: slot.key, label: slot.label, default_url: defaults[slot.key] ?? null }))
     : foldSlots;
 
   // 이 자리의 기준값: 템플릿이 있으면 템플릿 사진(없으면 null = 사진 없음), 없으면 undefined = assets 기본 사진

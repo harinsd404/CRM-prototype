@@ -8,6 +8,7 @@ import type {
   ProductImage,
   ProductProfile,
   ProfileResult,
+  ProfileVersion,
   RunInput,
   RunState,
   RunSummary,
@@ -101,6 +102,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ product_images, extra_product_images, profile }),
     }),
+
+  // 고급 모드: 템플릿의 제품 프로필 버전·직접 수정·피드백 개선안
+  profileVersions: (templateId: number) => request<ProfileVersion[]>(`/templates/${templateId}/profile/versions`),
+  saveProfile: (templateId: number, profile: ProductProfile, note: string) =>
+    request<Template>(`/templates/${templateId}/profile`, { method: "PUT", body: JSON.stringify({ profile, note }) }),
+  proposeProfile: (templateId: number) =>
+    request<ProfileVersion>(`/templates/${templateId}/profile/propose`, { method: "POST" }),
+  activateProfile: (templateId: number, version: number) =>
+    request<ProfileVersion>(`/templates/${templateId}/profile/versions/${version}/activate`, { method: "POST" }),
+  rejectProfile: (templateId: number, version: number) =>
+    request<{ ok: boolean }>(`/templates/${templateId}/profile/versions/${version}/reject`, { method: "POST" }),
 
   // 제품 프로필: 기본(Fold), 올린 사진으로 AI 생성
   defaultProfile: () => request<ProductProfile>("/profiles/default"),

@@ -43,7 +43,7 @@ def list_product_images() -> list[ProductImage]:
 class CheckRequest(BaseModel):
     product_images: dict[str, str | None] = {}
     extra_product_images: list[str] = []
-    profile: ProductProfile | None = None  # 없으면 Fold 기본 프로필 + assets/product 기본 사진
+    profile: ProductProfile | None = None  # 없으면 Fold 기본 프로필
 
 
 @router.post("/product-images/check", response_model=ImageCheck)
@@ -53,7 +53,6 @@ def check(body: CheckRequest) -> ImageCheck:
         body.product_images,
         body.extra_product_images[:MAX_EXTRA_PRODUCT_IMAGES],
         body.profile or FOLD_PROFILE,
-        use_defaults=body.profile is None,
     )
 
 
