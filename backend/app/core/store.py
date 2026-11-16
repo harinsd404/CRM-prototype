@@ -1,5 +1,7 @@
 import re
 import shutil
+import threading
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -127,6 +129,22 @@ def save_run(run: RunState) -> None:
         row.product_name = run.input.product_name
         row.template_id = run.input.template_id
         row.updated_at = run.updated_at
+
+
+# 한 실행의 상태를 읽고-고치고-쓰는 동안 다른 쓰기가 끼어들지 않게 한다 (생성 중 선택 등)
+_write_lock = threading.RLock()
+
+
+def mutate_run(run_id: str, change: Callable[[RunState], None]) -> RunState:
+    """최신 상태를 다시 읽어 change로 고치고 저장한다. 오래 걸리는 생성이 들고 있던 옛 상태로
+    그 사이의 선택·수정을 덮어쓰지 않게, 실행 상태를 쓰는 곳은 모두 이것을 쓴다. change가 예외를 내면 저장하지 않는다."""
+    with _write_lock:
+        run = load_run(run_id)
+        if run is None:
+            raise ValueError(f"DB에 없는 실행입니다: {run_id}")
+        change(run)
+        save_run(run)
+        return run
 
 
 def load_run(run_id: str, user_id: int | None = None) -> RunState | None:

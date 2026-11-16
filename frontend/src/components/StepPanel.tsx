@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "../api";
 import { useLeaveWarning, useRunPolling } from "../hooks";
 import {
@@ -30,6 +30,15 @@ interface Props {
 // 진행 중인 작업 표시용 키: "all" = 단계 전체, 슬롯 이름 = 그 슬롯 생성·선택, `${슬롯}#${안}` = 이미지 한 장 수정
 type BusyKey = string | null;
 
+/** 서버는 한 실행에서 생성·수정 요청을 하나씩만 받는다. 그동안 들어온 요청은 대기열에 넣었다가 차례로 보낸다. */
+interface QueuedJob {
+  id: number;
+  slot: string;
+  label: string;
+  key: BusyKey;
+  action: () => Promise<RunState>;
+}
+
 /** 모든 단계 공통: 생성/재생성 → 슬롯마다 N개 카드 → 하나 선택 → 직접 수정 또는 AI에게 수정 요청.
  *  POD·카피 단계는 슬롯이 하나, 이미지 단계는 Pod마다 슬롯이 하나씩이다. */
 export default function StepPanel({ step, run, locked, onChange }: Props) {
@@ -42,22 +51,68 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
     done: number;
     total: number;
   } | null>(null);
-  useLeaveWarning(busy !== null);
+  const [queue, setQueueState] = useState<QueuedJob[]>([]);
+  const queueRef = useRef<QueuedJob[]>([]);
+  const setQueue = (next: QueuedJob[]) => {
+    queueRef.current = next;
+    setQueueState(next);
+  };
+  const activeRef = useRef(false); // 서버에서 생성·수정 요청이 도는 중
+  const jobId = useRef(0);
+  useLeaveWarning(busy !== null || queue.length > 0);
   // 이미지는 한 장씩 끝나는 대로 서버에 저장되므로, 생성 중에는 실행을 다시 읽어 끝난 이미지부터 보여준다
   useRunPolling(step === "image" && busy !== null, run, onChange);
 
-  const call = async (key: string, action: () => Promise<RunState>): Promise<boolean> => {
+  // 응답이 늦게 도착해도 더 최신 상태(예: 그 사이의 선택)를 되돌리지 않는다
+  const latestRun = useRef(run);
+  latestRun.current = run;
+  const apply = (next: RunState) => {
+    if (next.updated_at >= latestRun.current.updated_at) onChange(next);
+  };
+
+  const runJob = async (key: BusyKey, action: () => Promise<RunState>, label?: string): Promise<boolean> => {
     setBusy(key);
     setError(null);
     try {
-      onChange(await action());
+      apply(await action());
       return true;
     } catch (err) {
-      setError((err as Error).message);
+      setError(label ? `${label}: ${(err as Error).message}` : (err as Error).message);
       return false;
     } finally {
       setBusy(null);
     }
+  };
+  const drainQueue = async () => {
+    while (queueRef.current.length > 0) {
+      const [job, ...rest] = queueRef.current;
+      setQueue(rest);
+      await runJob(job.key, job.action, job.label);
+    }
+  };
+  // 서버 작업 하나를 돌리고, 끝나면 그동안 쌓인 대기열을 이어서 보낸다
+  const exclusive = async (work: () => Promise<boolean>): Promise<boolean> => {
+    activeRef.current = true;
+    try {
+      return await work();
+    } finally {
+      await drainQueue();
+      activeRef.current = false;
+    }
+  };
+  // 다른 작업이 돌고 있으면 대기열에 넣는다 (true = 보냈거나 대기열에 넣음)
+  const schedule = (slot: string, label: string, key: BusyKey, action: () => Promise<RunState>): Promise<boolean> => {
+    if (activeRef.current) {
+      jobId.current += 1;
+      setQueue([...queueRef.current, { id: jobId.current, slot, label, key, action }]);
+      return Promise.resolve(true);
+    }
+    return exclusive(() => runJob(key, action));
+  };
+  const call = (key: string, action: () => Promise<RunState>) => schedule(key, "", key, action);
+  // 선택·'그대로 쓰기'는 서버가 최신 상태에 바로 반영하므로 생성 중에도 기다리지 않는다
+  const immediate = (action: () => Promise<RunState>) => {
+    action().then(apply, (err: Error) => setError(err.message));
   };
 
   // 안을 고르거나 고치는 것은 뒤 단계 결과를 그대로 둔다 (backend runs.py _apply_change).
@@ -76,21 +131,27 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
   // 이미지 단계에서 아직 생성하지 않은 Pod. 일부만 만든 상태면 남은 Pod만 이어서 만들 수 있다
   const missingPods = multiSlot ? pods.filter((pod) => !state.slots[pod]) : [];
 
-  const generateEachPod = async (key: string, targets: string[]) => {
-    setBusy(key);
-    setError(null);
-    try {
-      for (const [i, pod] of targets.entries()) {
-        setProgress({ pod, done: i, total: targets.length });
-        onChange(await api.generate(run.id, step, pod));
+  // Pod를 하나씩 만들고, Pod 사이사이에 대기열(수정 요청 등)을 먼저 보낸다
+  const generateEachPod = (key: string, targets: string[]) =>
+    exclusive(async () => {
+      setError(null);
+      try {
+        for (const [i, pod] of targets.entries()) {
+          setBusy(key);
+          setProgress({ pod, done: i, total: targets.length });
+          apply(await api.generate(run.id, step, pod));
+          setProgress(null);
+          await drainQueue();
+        }
+        return true;
+      } catch (err) {
+        setError((err as Error).message);
+        return false;
+      } finally {
+        setProgress(null);
+        setBusy(null);
       }
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setProgress(null);
-      setBusy(null);
-    }
-  };
+    });
 
   const generateAll = () => {
     if (!confirmReset()) return;
@@ -164,16 +225,29 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             slot={state.slots[slotName] ?? null}
             busy={busy}
             generating={busy === slotName || progress?.pod === slotName}
+            queued={queue.filter((job) => job.slot === slotName)}
+            onCancelQueued={(id) => setQueue(queueRef.current.filter((job) => job.id !== id))}
             onGenerate={
-              multiSlot ? (feedback) => call(slotName, () => api.generate(run.id, step, slotName, feedback)) : null
+              multiSlot
+                ? (feedback) =>
+                    schedule(slotName, feedback ? `요청하며 다시 생성 · ${feedback}` : "다시 생성", slotName, () =>
+                      api.generate(run.id, step, slotName, feedback),
+                    )
+                : null
             }
-            onSelect={(index, edited) => call(slotName, () => api.select(run.id, step, slotName, index, edited))}
+            onSelect={(index, edited) =>
+              multiSlot
+                ? immediate(() => api.select(run.id, step, slotName, index, edited))
+                : call(slotName, () => api.select(run.id, step, slotName, index, edited))
+            }
             onRevise={(index, request, pods) =>
-              call(multiSlot ? `${slotName}#${index}` : slotName, () =>
-                api.revise(run.id, step, { slot: slotName, index, request, pods }),
-              )
+              multiSlot
+                ? schedule(slotName, `${index + 1}번 이미지 수정 · ${request}`, `${slotName}#${index}`, () =>
+                    api.revise(run.id, step, { slot: slotName, index, request, pods }),
+                  )
+                : call(slotName, () => api.revise(run.id, step, { slot: slotName, index, request, pods }))
             }
-            onKeep={() => call(slotName, () => api.keepImage(run.id, slotName))}
+            onKeep={() => immediate(() => api.keepImage(run.id, slotName))}
           />
         ))}
     </section>
@@ -238,6 +312,8 @@ interface SlotViewProps {
   slot: SlotState<StepName> | null; // 이미지 단계에서 아직 생성하지 않은 Pod는 null
   busy: BusyKey;
   generating: boolean; // 이 슬롯의 안을 만드는 중
+  queued: QueuedJob[]; // 이 슬롯에 대해 대기열에 있는 요청
+  onCancelQueued: (id: number) => void;
   onGenerate: ((feedback?: string) => Promise<boolean>) | null; // 이미지 단계: 이 Pod만 (요청 반영해) 다시 생성
   onSelect: (index: number, edited?: StepContents[StepName]) => void;
   onRevise: (index: number, request: string, pods?: string[]) => Promise<boolean>;
@@ -252,12 +328,15 @@ function SlotView({
   slot,
   busy,
   generating,
+  queued,
+  onCancelQueued,
   onGenerate,
   onSelect,
   onRevise,
   onKeep,
 }: SlotViewProps) {
-  const disabled = busy !== null;
+  // 이미지 단계는 생성 중에도 고르기·수정 요청을 받는다 (요청은 대기열로). POD·카피는 생성이 끝날 때까지 막는다
+  const disabled = busy !== null && step !== "image";
   const [requesting, setRequesting] = useState(false); // 이 Pod 요청하며 다시 생성
   const [revising, setRevising] = useState<number | null>(null); // 수정 요청 중인 이미지 번호
 
@@ -310,6 +389,28 @@ function SlotView({
             </div>
           )}
         </div>
+      )}
+
+      {queued.length > 0 && (
+        <ul className="mt-3 space-y-1">
+          {queued.map((job) => (
+            <li
+              key={job.id}
+              className="flex items-center gap-2 rounded-lg border border-dashed bg-gray-50 px-3 py-1.5 text-xs text-gray-600"
+            >
+              <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[11px] text-gray-600">대기 중</span>
+              <span className="min-w-0 flex-1 truncate">{job.label}</span>
+              <button
+                type="button"
+                onClick={() => onCancelQueued(job.id)}
+                className="text-gray-400 hover:text-danger"
+                aria-label="대기 중인 요청 취소"
+              >
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
 
       {slot && slot.stale.length > 0 && !generating && (

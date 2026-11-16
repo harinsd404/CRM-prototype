@@ -153,8 +153,11 @@ def save_as_template(run_id: str, body: SaveTemplateRequest, user: CurrentUser) 
     # 이 실행의 규칙이 템플릿에 들어갔으면 다시 저장할 때의 기준 버전도 맞춘다 (새 규칙을 그대로 뒀으면 예전 기준을 남겨 둔다)
     version = saved.profile_version if saved.profile == run.input.product_profile else run.input.profile_version
     if (run.input.template_id, run.input.profile_version) != (saved.id, version):
-        run.input.template_id, run.input.profile_version = saved.id, version
-        store.save_run(run)
+
+        def apply(fresh: RunState) -> None:
+            fresh.input.template_id, fresh.input.profile_version = saved.id, version
+
+        store.mutate_run(run_id, apply)
     return saved
 
 
@@ -200,84 +203,106 @@ async def generate_step(
 
     with guard.run_lock(run_id):
         if step_name == "image":
-            await _generate_images(step, run, slots, feedback)
-            return run
+            return await _generate_images(step, run, slots, feedback)
         try:
             generated = await step.generate(run, slots, feedback)
         except Exception as e:
             logger.exception("%s 단계 생성 실패", step_name)
             raise HTTPException(502, f"'{step_name}' 생성에 실패했습니다: {e}") from e
 
-        state = run.steps[step_name]
-        if slot is None:
-            state.slots = generated
-        else:
-            state.slots[slot] = generated[slot]
-        run.reset_after(step_name)
-        store.save_run(run)
-    return run
+        def apply(fresh: RunState) -> None:
+            state = fresh.steps[step_name]
+            if slot is None:
+                state.slots = generated
+            else:
+                state.slots[slot] = generated[slot]
+            fresh.reset_after(step_name)
+
+        return store.mutate_run(run_id, apply)
 
 
-async def _generate_images(step: Step, run: RunState, slots: list[str], feedback: str | None) -> None:
+async def _generate_images(step: Step, run: RunState, slots: list[str], feedback: str | None) -> RunState:
     """이미지는 한 장에 수십 초가 걸려서, 한 장씩 끝나는 대로 저장한다. 화면은 생성 중에 실행을 다시 읽어 바로 보여준다.
+    생성 중에도 사람이 다른 Pod(또는 먼저 나온 이미지)를 고를 수 있으므로, 저장할 때마다 최신 상태에 이 생성의 변경만 얹는다.
     모든 안이 실패하면 원래 안으로 되돌린다."""
-    state = run.steps["image"]
-    backup = {s: state.slots.get(s) for s in slots}, run.html
-    for s in slots:
-        state.slots[s] = SlotState(pending=settings.num_options)
-    run.reset_after("image")
-    store.save_run(run)
+    backup: dict[str, SlotState | None] = {}
+    html_backup: list[str | None] = [None]
+
+    def start(fresh: RunState) -> None:
+        state = fresh.steps["image"]
+        backup.update({s: state.slots.get(s) for s in slots})
+        html_backup[0] = fresh.html
+        for s in slots:
+            state.slots[s] = SlotState(pending=settings.num_options)
+        fresh.reset_after("image")
+
+    store.mutate_run(run.id, start)
 
     def on_option(slot: str, option: Option | None) -> None:
-        current = state.slots[slot]
-        current.pending -= 1
-        if option is not None:
-            current.options.append(option)
-        store.save_run(run)
+        def add(fresh: RunState) -> None:
+            current = fresh.steps["image"].slots.get(slot)
+            if current is None:
+                return
+            current.pending = max(0, current.pending - 1)
+            if option is not None:
+                current.options.append(option)
+
+        store.mutate_run(run.id, add)
 
     try:
-        generated = await step.generate(run, slots, feedback, on_option)
+        await step.generate(run, slots, feedback, on_option)
     except Exception as e:
         logger.exception("image 단계 생성 실패")
-        previous, run.html = backup
-        for s, old in previous.items():
-            if old is None:
-                state.slots.pop(s, None)
-            else:
-                state.slots[s] = old
-        store.save_run(run)
+
+        def restore(fresh: RunState) -> None:
+            state = fresh.steps["image"]
+            fresh.html = html_backup[0]
+            for s, old in backup.items():
+                if old is None:
+                    state.slots.pop(s, None)
+                else:
+                    state.slots[s] = old
+
+        store.mutate_run(run.id, restore)
         raise HTTPException(502, f"'image' 생성에 실패했습니다: {e}") from e
-    state.slots.update(generated)
-    store.save_run(run)
+
+    # 안은 끝나는 대로 이미 붙었다 (collect_options가 돌려주는 순서와 같다). 남은 표시만 정리한다
+    def finish(fresh: RunState) -> None:
+        for s in slots:
+            if current := fresh.steps["image"].slots.get(s):
+                current.pending = 0
+
+    return store.mutate_run(run.id, finish)
 
 
 @router.post("/{run_id}/steps/{step_name}/select", response_model=RunState)
 def select_option(run_id: str, step_name: str, body: SelectRequest, user: CurrentUser) -> RunState:
     """안 하나를 선택한다. edited를 주면 그 안을 고친 내용으로 저장한다 (같은 스키마·규칙으로 검사)."""
     step = _get_step(step_name)
-    run = _get_run(run_id, user)
-    slot = run.steps[step_name].slots.get(body.slot)
-    if slot is None:
-        raise HTTPException(400, f"'{step_name}' 단계에 생성된 '{body.slot}' 슬롯이 없습니다.")
+    _get_run(run_id, user)  # 권한 확인
 
-    if not 0 <= body.index < len(slot.options):
-        raise HTTPException(400, f"선택할 수 있는 안은 0~{len(slot.options) - 1}번입니다.")
+    def apply(run: RunState) -> None:
+        slot = run.steps[step_name].slots.get(body.slot)
+        if slot is None:
+            raise HTTPException(400, f"'{step_name}' 단계에 생성된 '{body.slot}' 슬롯이 없습니다.")
+        if not 0 <= body.index < len(slot.options):
+            raise HTTPException(400, f"선택할 수 있는 안은 0~{len(slot.options) - 1}번입니다.")
 
-    before = _snapshot(run)
-    edited = None
-    if body.edited is not None:
-        try:
-            edited = step.make_edited_option(run, body.slot, slot.options[body.index].angle, body.edited)
-        except ValidationError as e:
-            raise HTTPException(422, f"수정 내용 형식이 맞지 않습니다: {e}") from e
-        except ValueError as e:  # 입력에 없는 Pod 이름 등
-            raise HTTPException(422, str(e)) from e
+        before = _snapshot(run)
+        edited = None
+        if body.edited is not None:
+            try:
+                edited = step.make_edited_option(run, body.slot, slot.options[body.index].angle, body.edited)
+            except ValidationError as e:
+                raise HTTPException(422, f"수정 내용 형식이 맞지 않습니다: {e}") from e
+            except ValueError as e:  # 입력에 없는 Pod 이름 등
+                raise HTTPException(422, str(e)) from e
 
-    slot.selected = body.index
-    slot.edited = edited
-    _apply_change(run, step_name, before)
-    store.save_run(run)
-    return run
+        slot.selected = body.index
+        slot.edited = edited
+        _apply_change(run, step_name, before)
+
+    return store.mutate_run(run_id, apply)
 
 
 @router.post("/{run_id}/steps/{step_name}/revise", response_model=RunState)
@@ -303,33 +328,51 @@ async def revise_option(run_id: str, step_name: str, body: ReviseRequest, user: 
     _log_request(run, user, step_name, pod, request, "revise")
 
     with guard.run_lock(run_id):
-        before = _snapshot(run)
-        try:
-            if isinstance(step, ImageStep):
-                base = slot.options[body.index]
+        if isinstance(step, ImageStep):
+            base = slot.options[body.index]
+            try:
                 revised = await step.revise_option(run, body.slot, ImageOption.model_validate(base.content), request)
-                slot.options.append(step.make_option(run, body.slot, f"{body.index + 1}번 수정 · {request}", revised))
-                slot.selected, slot.edited = len(slot.options) - 1, None
-            else:
-                if not body.pods:
-                    raise HTTPException(400, "카피 수정 요청에는 고칠 Pod(pods)가 필요합니다.")
-                # 이미 직접 고친 수정본이 있으면 그 위에 고친다
-                base = slot.edited if slot.selected == body.index and slot.edited else slot.options[body.index]
-                copy = CopyOption.model_validate(base.content)
-                unknown = set(body.pods) - {p.pod for p in copy.pods}
-                if unknown:
-                    raise HTTPException(400, f"이 카피안에 없는 Pod입니다: {', '.join(sorted(unknown))}")
-                revised = await step.revise_pods(run, copy, body.pods, request)
-                slot.selected, slot.edited = body.index, step.make_option(run, body.slot, base.angle, revised)
-        except HTTPException:
-            raise
+            except Exception as e:
+                logger.exception("%s 수정 요청 실패", step_name)
+                raise HTTPException(502, f"수정 요청 처리에 실패했습니다: {e}") from e
+            option = step.make_option(run, body.slot, f"{body.index + 1}번 수정 · {request}", revised)
+
+            def add(fresh: RunState) -> None:
+                # 수정하는 동안 다른 Pod를 고르거나 했을 수 있으니 최신 상태에 새 안만 붙이고 고른다
+                target = fresh.steps[step_name].slots.get(body.slot)
+                if target is None:
+                    raise HTTPException(409, f"수정하는 사이 '{body.slot}' 이미지가 다시 생성되었습니다.")
+                before = _snapshot(fresh)
+                target.options.append(option)
+                target.selected, target.edited = len(target.options) - 1, None
+                _apply_change(fresh, step_name, before)
+
+            return store.mutate_run(run_id, add)
+
+        if not body.pods:
+            raise HTTPException(400, "카피 수정 요청에는 고칠 Pod(pods)가 필요합니다.")
+        # 이미 직접 고친 수정본이 있으면 그 위에 고친다
+        base = slot.edited if slot.selected == body.index and slot.edited else slot.options[body.index]
+        copy = CopyOption.model_validate(base.content)
+        unknown = set(body.pods) - {p.pod for p in copy.pods}
+        if unknown:
+            raise HTTPException(400, f"이 카피안에 없는 Pod입니다: {', '.join(sorted(unknown))}")
+        try:
+            revised = await step.revise_pods(run, copy, body.pods, request)
         except Exception as e:
             logger.exception("%s 수정 요청 실패", step_name)
             raise HTTPException(502, f"수정 요청 처리에 실패했습니다: {e}") from e
+        edited = step.make_option(run, body.slot, base.angle, revised)
 
-        _apply_change(run, step_name, before)
-        store.save_run(run)
-    return run
+        def apply(fresh: RunState) -> None:
+            target = fresh.steps[step_name].slots.get(body.slot)
+            if target is None or body.index >= len(target.options):
+                raise HTTPException(409, "수정하는 사이 카피안이 다시 생성되었습니다.")
+            before = _snapshot(fresh)
+            target.selected, target.edited = body.index, edited
+            _apply_change(fresh, step_name, before)
+
+        return store.mutate_run(run_id, apply)
 
 
 def _snapshot(run: RunState) -> dict[str, dict[str, str]]:
@@ -403,24 +446,28 @@ def _render(run: RunState) -> None:
 @router.post("/{run_id}/steps/image/slots/{slot}/keep", response_model=RunState)
 def keep_image(run_id: str, slot: str, user: CurrentUser) -> RunState:
     """앞 단계가 바뀌었다는 표시를 지운다. 사람이 지금 이미지를 그대로 쓰기로 한 경우."""
-    run = _get_run(run_id, user)
-    state = run.steps["image"].slots.get(slot)
-    if state is None:
-        raise HTTPException(400, f"이미지 단계에 생성된 '{slot}' 슬롯이 없습니다.")
-    state.stale = []
-    store.save_run(run)
-    return run
+    _get_run(run_id, user)  # 권한 확인
+
+    def apply(run: RunState) -> None:
+        state = run.steps["image"].slots.get(slot)
+        if state is None:
+            raise HTTPException(400, f"이미지 단계에 생성된 '{slot}' 슬롯이 없습니다.")
+        state.stale = []
+
+    return store.mutate_run(run_id, apply)
 
 
 @router.post("/{run_id}/render", response_model=RunState)
 def render(run_id: str, user: CurrentUser) -> RunState:
-    run = _get_run(run_id, user)
-    missing = [name for name in STEP_ORDER if not run.is_complete(name)]
-    if missing:
-        raise HTTPException(400, f"아직 선택하지 않은 단계가 있습니다: {', '.join(missing)}")
-    _render(run)
-    store.save_run(run)
-    return run
+    _get_run(run_id, user)  # 권한 확인
+
+    def apply(run: RunState) -> None:
+        missing = [name for name in STEP_ORDER if not run.is_complete(name)]
+        if missing:
+            raise HTTPException(400, f"아직 선택하지 않은 단계가 있습니다: {', '.join(missing)}")
+        _render(run)
+
+    return store.mutate_run(run_id, apply)
 
 
 @router.get("/{run_id}/preview", response_class=HTMLResponse)

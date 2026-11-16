@@ -40,6 +40,9 @@ function readAdvanced() {
   }
 }
 
+// html의 scroll-behavior: smooth 때문에 화면을 바꿀 때 아래에서부터 미끄러져 올라가지 않게 바로 맨 위로
+const scrollToTop = () => window.scrollTo({ top: 0, behavior: "instant" });
+
 export default function App() {
   const [me, setMe] = useState<Me | null | undefined>(undefined); // undefined = 확인 중, null = 로그인 필요
   const [run, setRun] = useState<RunState | null>(null);
@@ -70,8 +73,8 @@ export default function App() {
         // 단계는 실행을 불러온 뒤에 그려지므로 주소의 #step-… 위치로 그때 이동한다
         requestAnimationFrame(() => {
           const target = window.location.hash && document.querySelector(window.location.hash);
-          if (target) target.scrollIntoView();
-          else window.scrollTo({ top: 0 });
+          if (target) target.scrollIntoView({ behavior: "instant" });
+          else scrollToTop();
         });
       },
       (e: Error) => {
@@ -84,12 +87,14 @@ export default function App() {
   const startRun = (newRun: RunState) => {
     writeRunId(newRun.id);
     setRun(newRun);
+    // 입력 폼 맨 아래의 '시작하기'에서 넘어오므로, 실행 화면은 맨 위(① Pod)부터 보여 준다
+    requestAnimationFrame(scrollToTop);
   };
 
   const goHome = (next: Home) => {
     writeRunId(null);
     window.history.replaceState(null, "", window.location.pathname + window.location.search);
-    window.scrollTo({ top: 0 });
+    scrollToTop();
     setRun(null);
     setHome(next);
     setLoadError(null);
