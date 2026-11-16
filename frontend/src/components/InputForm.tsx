@@ -14,6 +14,7 @@ import ColorLineupField from "./ColorLineupField";
 import PodsField, { podsValid } from "./PodsField";
 import ProductImagesField, { type VisiblePhoto } from "./ProductImagesField";
 import ProfileField from "./ProfileField";
+import ProfileGenerator from "./ProfileGenerator";
 
 interface Props {
   initial: RunInput | null; // 다시 시작하기·다른 페르소나로: 그 실행의 입력을 채워 둔다
@@ -61,6 +62,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
   const [defaultProfile, setDefaultProfile] = useState<ProductProfile | null>(null); // Fold (프로필이 없을 때)
   const [baseline, setBaseline] = useState<Baseline | null>(null); // 사진 칸의 '되돌리기' 기준
   const [profileSource, setProfileSource] = useState(initial?.profile ? "이전 실행의 규칙" : "기본 (Galaxy Z Fold)");
+  const [profileWarnings, setProfileWarnings] = useState<string[]>([]); // AI가 사진을 보고 남긴 경고
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,6 +83,10 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
   }, [initial]);
 
   const profile = fields.profile ?? defaultProfile;
+  // 템플릿 없이 새 제품: 규칙이 아직 없으니 Fold 사진 자리 대신 '사진 올리고 AI로 규칙 만들기'를 보여 준다.
+  // 예전 실행(프로필 없이 Fold로 만든 것)을 다시 시작할 때는 그대로 Fold로 둔다
+  const legacyFold = !!initial && !initial.profile;
+  const newProduct = !fields.profile && fields.template_id == null && !legacyFold;
 
   const set = <K extends keyof Fields>(key: K, value: Fields[K]) => setFields((prev) => ({ ...prev, [key]: value }));
 
@@ -91,8 +97,18 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
     if (touched && !window.confirm("지금 입력한 제품 정보와 Pod를 템플릿 내용으로 바꿉니다. 계속할까요?")) return;
     setError(null);
     if (id === null) {
+      // 새 제품으로: 템플릿의 규칙·사진도 비운다 (사진을 올리고 AI로 다시 만든다)
       setTemplate(null);
-      setFields((prev) => ({ ...prev, template_id: null, profile_version: null }));
+      setBaseline(null);
+      setProfileWarnings([]);
+      setFields((prev) => ({
+        ...prev,
+        template_id: null,
+        profile_version: null,
+        profile: null,
+        product_images: {},
+        extra_product_images: [],
+      }));
       return;
     }
     try {
@@ -127,6 +143,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
       extra_product_images: result.extra_product_images,
     }));
     setBaseline({ images, extras: result.extra_product_images, label: "AI가 배정한 사진" });
+    setProfileWarnings(result.warnings);
     setProfileSource("AI가 사진으로 만듦 (템플릿으로 저장하면 다음에 불러올 수 있음)");
     setRows((prev) =>
       prev.map((row) => (row.visual.trim() || !result.pod_visuals[row.name] ? row : { ...row, visual: result.pod_visuals[row.name] })),
@@ -135,6 +152,9 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
 
   // AI 생성의 첫 후보: 지금 사진 칸에 있는 올린 사진들
   const [visiblePhotos, setVisiblePhotos] = useState<VisiblePhoto[]>([]);
+  useEffect(() => {
+    if (newProduct) setVisiblePhotos([]); // 사진 칸이 없을 때는 컬러 뽑기 후보도 비운다
+  }, [newProduct]);
   const currentPhotos = [
     ...Object.values(fields.product_images ?? {}).filter((name): name is string => !!name),
     ...(fields.extra_product_images ?? []),
@@ -151,6 +171,10 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
     }
     if (!fields.colors.trim()) {
       setError("컬러 라인업을 하나 이상 입력해 주세요.");
+      return;
+    }
+    if (newProduct) {
+      setError("제품 사진을 올리고 'AI로 제품 규칙 만들기'를 먼저 눌러 주세요. Galaxy Z Fold라면 템플릿을 고르면 됩니다.");
       return;
     }
     setBusy(true);
@@ -176,7 +200,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
             onChange={(e) => applyTemplate(e.target.value ? Number(e.target.value) : null)}
             className={fieldClass}
           >
-            <option value="">선택 안 함 (직접 입력)</option>
+            <option value="">새 제품 (사진으로 규칙 만들기)</option>
             {templates?.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name} · Pod {t.pod_count}개
@@ -187,7 +211,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
       </div>
       {!touched && (
         <p className="rounded-lg bg-primary-soft px-4 py-3 text-sm text-gray-700">
-          제품 템플릿을 고르면 제품명·컬러·Pod와 스펙이 채워집니다. 템플릿 없이 직접 입력해도 됩니다.
+          제품 템플릿을 고르면 제품명·컬러·Pod와 스펙이 채워집니다. 새 제품이면 템플릿 없이 입력하고, 아래 '제품 사진'에 사진을 올려 AI로 제품 규칙을 만드세요.
         </p>
       )}
 
@@ -247,6 +271,8 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
         }}
         currentPhotos={currentPhotos}
         onGenerated={applyGenerated}
+        warnings={profileWarnings}
+        newProduct={newProduct}
         onEdit={
           advanced && profile
             ? (edited) => {
@@ -257,16 +283,32 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
         }
       />
 
-      <ProductImagesField
-        value={fields.product_images ?? {}}
-        onChange={(value) => set("product_images", value)}
-        extras={fields.extra_product_images ?? []}
-        onExtrasChange={(value) => set("extra_product_images", value)}
-        baseline={baseline}
-        profile={fields.profile ?? null}
-        foldPhotos={!fields.profile || fields.profile.device_noun.trim() === defaultProfile?.device_noun}
-        onVisiblePhotos={setVisiblePhotos}
-      />
+      {newProduct ? (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">제품 사진 — ③ 이미지를 만들 때 제품 모양·색의 기준으로 함께 보냄</legend>
+          <ProfileGenerator
+            product={{
+              product_name: fields.product_name,
+              colors: fields.colors,
+              pods: usedPods.map((row) => ({ name: row.name.trim(), spec: row.spec })),
+            }}
+            initialPhotos={[]}
+            onGenerated={applyGenerated}
+            intro="제품 공식 사진을 자유롭게 올려 주세요 (정면·뒷면·측면·착용/사용 모습·컬러 라인업 등 여러 각도). AI가 사진마다 자리를 정하고, 이 제품에 맞는 제품 규칙(기기 묘사·제품 상태)을 씁니다. 만든 뒤에는 자리별로 사진을 바꾸거나 더 올릴 수 있습니다."
+          />
+        </fieldset>
+      ) : (
+        <ProductImagesField
+          value={fields.product_images ?? {}}
+          onChange={(value) => set("product_images", value)}
+          extras={fields.extra_product_images ?? []}
+          onExtrasChange={(value) => set("extra_product_images", value)}
+          baseline={baseline}
+          profile={fields.profile ?? null}
+          foldPhotos={!fields.profile || fields.profile.device_noun.trim() === defaultProfile?.device_noun}
+          onVisiblePhotos={setVisiblePhotos}
+        />
+      )}
 
       {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex items-center gap-3">
