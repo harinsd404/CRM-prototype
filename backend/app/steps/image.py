@@ -190,7 +190,7 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
         f"# Device\n{profile.device_rules.strip()}",
         state.rules.strip(),
         *([f"# Screen\n{profile.screen_rules.strip()}"] if shows_screen else []),
-        *([common["person"]] if has_person else []),
+        common["person"] if has_person else common["no_person"],
         *([common["safe_zone"]] if layout == "L3" else []),
         common[f"mood_{run.input.mood}"],
     ]
@@ -205,7 +205,7 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
         *([f"- 인물/손 : {brief.person_hand}"] if has_person else []),
         f"- 구도 : {brief.composition}",
         f"- 화면비 : {brief.ratio}",
-        *([f"- Text Safe Zone : {brief.safe_zone}"] if layout == "L3" else []),
+        *([f"- Quiet area : {brief.safe_zone}"] if layout == "L3" else []),
     ]
     body = "\n\n".join(blocks)
     check = common["check"].replace("{product_check}", profile.check.strip())
@@ -218,7 +218,7 @@ class ImageStep(Step):
     name = "image"
     schema = ImageOption
     angles = [
-        "제품 단독(Base) 또는 한 손에 쥔 클로즈업",
+        "제품 단독(Base) 클로즈업, 또는 제품을 실제로 쓰는 손(쥐거나 착용)과 함께한 클로즈업",
         "손이나 인물(얼굴 비노출)이 함께 있는 사용 장면",
         "공간·배경 연출이 돋보이는 장면",
     ]

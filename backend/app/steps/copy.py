@@ -1,3 +1,4 @@
+import re
 from collections import Counter
 from typing import Literal
 
@@ -46,6 +47,15 @@ class ShortenResult(BaseModel):
     headlines: list[ShortHeadline]
 
 
+class ShortBody(BaseModel):
+    pod: str
+    body: str
+
+
+class ShortenBodyResult(BaseModel):
+    bodies: list[ShortBody]
+
+
 async def shorten_headlines(copy: CopyOption) -> None:
     """글자 수는 코드가 세고, 넘긴 헤드카피만 모델에게 다시 줄이게 한다. 그래도 넘으면 경고로 남는다."""
     for _ in range(SHORTEN_ATTEMPTS):
@@ -58,6 +68,29 @@ async def shorten_headlines(copy: CopyOption) -> None:
         for p in long:
             if (new := shortened.get(p.pod)) and len(new) < len(p.headline):
                 p.headline = new
+
+
+async def shorten_bodies(copy: CopyOption) -> None:
+    """바디카피도 같은 방식: 110자를 넘긴 것만 다시 줄이게 한다 (실측: 15개 중 8개가 넘음). 그래도 넘으면 경고로 남는다."""
+    for _ in range(SHORTEN_ATTEMPTS):
+        long = [p for p in copy.pods if len(p.body) > BODY_MAX]
+        if not long:
+            return
+        items = "\n".join(f"- {p.pod} ({p.ending_order}): {p.body}  ← 현재 {len(p.body)}자" for p in long)
+        result = await invoke_structured("copy_shorten_body", ShortenBodyResult, {"items": items, "max_length": str(BODY_MAX)})
+        shortened = {b.pod: b.body.strip() for b in result.bodies}
+        for p in long:
+            if (new := shortened.get(p.pod)) and len(new) < len(p.body):
+                p.body = new
+
+
+_NUMBER = re.compile(r"\d[\d,.]*\d|\d")
+
+
+def unsourced_numbers(text: str, source: str) -> list[str]:
+    """카피에 쓴 수치 중 입력 원문에 없는 것. factcheck에 적지 않은 수치도 잡는다."""
+    allowed = _compact(source)
+    return [n for n in dict.fromkeys(_NUMBER.findall(text)) if n not in allowed]
 
 
 def _compact(text: str) -> str:
@@ -82,6 +115,8 @@ def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) 
         allowed = _compact(sources.get(p.pod, ""))
         if unsourced := [f.source for f in p.factcheck if _compact(f.source) not in allowed]:
             warnings.append(f"[{p.pod}] 입력 스펙에 없는 근거: {', '.join(unsourced)}")
+        if numbers := unsourced_numbers(f"{p.headline} {p.body}", sources.get(p.pod, "")):
+            warnings.append(f"[{p.pod}] 입력 스펙에 없는 수치: {', '.join(numbers)}")
 
     rules = pod_rules(len(plan_pods))
     types = Counter(p.headline_type for p in copy.pods)
@@ -144,6 +179,7 @@ class CopyStep(TextStep):
         copy = await super().generate_option(run, slot, context, angle, index)
         if settings.llm_provider != "mock":
             await shorten_headlines(copy)
+            await shorten_bodies(copy)
         return copy
 
     async def revise_pods(self, run: RunState, copy: CopyOption, pods: list[str], request: str) -> CopyOption:
@@ -175,6 +211,7 @@ class CopyStep(TextStep):
                 raise ValueError(f"모델이 일부 Pod를 돌려주지 않았습니다: {', '.join(missing)}")
             partial = CopyOption(pods=list(revised.values()), rationale="")
             await shorten_headlines(partial)
+            await shorten_bodies(partial)
             revised = {p.pod: p for p in partial.pods}
         return copy.model_copy(update={"pods": [revised.get(p.pod, p) for p in copy.pods]})
 

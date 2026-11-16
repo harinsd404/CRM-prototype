@@ -23,7 +23,7 @@ flowchart TD
 
     %% ② 카피
     D1 -- "RunInput + Pod 순서·레이아웃" --> G2["🟦 ② 카피 생성<br/>prompts/copy.md × 방향 3개 병렬"]
-    G2 --> FIX2["🟦 헤드카피 20자 초과분만 다시 줄이기<br/>prompts/copy_shorten.md"]
+    G2 --> FIX2["🟦 헤드카피 20자·바디카피 110자 초과분만 다시 줄이기<br/>prompts/copy_shorten.md, copy_shorten_body.md"]
     FIX2 -- "CopyOption × 3" --> C2["⬜ 규칙 검사 check_copy<br/>글자 수·헤드 유형·어미 배열·팩트체크 원문 대조<br/>eyebrow = Pod명으로 고정"]
     C2 -- "Option × 3 (+warnings)" --> H2{"🟧 사람: ② 선택"}
     H2 -- "다시 생성 (+feedback)" --> G2
