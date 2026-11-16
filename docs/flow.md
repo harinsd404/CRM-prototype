@@ -9,12 +9,12 @@
 
 ```mermaid
 flowchart TD
-    IN[/"🟧 입력 폼<br/>타겟 페르소나 · 소구 강도 · 이미 쓴 1순위 Pod<br/>제품명 · 컬러 · Pod별 스펙"/]
+    IN[/"🟧 입력 폼<br/>타겟 페르소나 · 소구 강도<br/>제품명 · 컬러 · Pod별 스펙"/]
     IN -- "RunInput<br/>POST /api/runs" --> S0[("🟩 실행 생성<br/>DB runs + data/runs/{run_id}/")]
 
     %% ① Pod 순서·레이아웃
     S0 -- "RunInput" --> G1["🟦 ① Pod 순서·레이아웃 생성<br/>prompts/pod.md × 방향 3개 병렬"]
-    G1 -- "PodOption × 3" --> C1["⬜ 규칙 검사 check_pod_plan<br/>모든 Pod·1순위 중복·이동 ⌈0.6n⌉개·레이아웃 연속/min(5,⌈0.8n⌉)종"]
+    G1 -- "PodOption × 3" --> C1["⬜ 규칙 검사 check_pod_plan<br/>모든 Pod·이동 ⌈0.6n⌉개·레이아웃 연속/min(5,⌈0.8n⌉)종"]
     C1 -- "Option × 3 (+warnings)" --> H1{"🟧 사람: ① 선택"}
     H1 -- "다시 생성 (+수정 요청 feedback)" --> G1
     H1 -- "직접 수정: 블록 끌어서 순서·레이아웃 변경" --> C1b["⬜ 같은 규칙으로 재검사"]

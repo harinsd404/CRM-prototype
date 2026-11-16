@@ -203,8 +203,7 @@ export default function App() {
                 <span className="font-semibold">{run.input.target_id}</span> {run.input.persona} · 소구 강도 {run.input.mood}
               </p>
               <p className="mt-1 text-gray-600">
-                {run.input.product_name} · {run.input.colors} · 이미 사용된 1순위 Pod:{" "}
-                {run.input.used_first_pod ?? "없음"}
+                {run.input.product_name} · {run.input.colors}
               </p>
             </section>
 

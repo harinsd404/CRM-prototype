@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
 import type {
   Mood,
-  PodName,
   ProductProfile,
   ProfileResult,
   RunInput,
@@ -31,7 +30,6 @@ const EMPTY: Fields = {
   target_id: "P1",
   persona: "",
   mood: "HOT",
-  used_first_pod: null,
   product_name: "",
   colors: "",
   product_images: {},
@@ -107,7 +105,6 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
         template_id: loaded.id,
         product_name: loaded.product_name,
         colors: loaded.colors,
-        used_first_pod: null,
         product_images: base.images,
         extra_product_images: base.extras,
         profile: loaded.profile,
@@ -154,8 +151,7 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
     setError(null);
     try {
       const pods = usedPods.map(({ name, key, spec, visual }) => ({ name: name.trim(), key: key.trim(), spec, visual }));
-      const usedFirst = pods.some((pod) => pod.name === fields.used_first_pod) ? fields.used_first_pod : null;
-      onCreated(await api.createRun({ ...fields, used_first_pod: usedFirst, pods }));
+      onCreated(await api.createRun({ ...fields, pods }));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -200,19 +196,6 @@ export default function InputForm({ initial, onCreated, advanced }: Props) {
             <option>HOT</option>
             <option>WARM</option>
             <option>COLD</option>
-          </select>
-        </label>
-        <label className="block md:col-span-2">
-          <span className="text-sm font-medium">이미 사용된 1순위 Pod</span>
-          <select
-            value={fields.used_first_pod ?? ""}
-            onChange={(e) => set("used_first_pod", (e.target.value || null) as PodName | null)}
-            className={fieldClass}
-          >
-            <option value="">없음</option>
-            {usedPods.map((row) => (
-              <option key={row.name}>{row.name.trim()}</option>
-            ))}
           </select>
         </label>
       </div>

@@ -17,7 +17,7 @@ class PodOption(BaseModel):
     rationale: str = Field(description="이 순서와 레이아웃 조합을 고른 기획 의도")
 
 
-def check_pod_plan(plan: PodOption, base_order: list[str], used_first_pod: str | None) -> list[str]:
+def check_pod_plan(plan: PodOption, base_order: list[str]) -> list[str]:
     """원본 P1의 Order Rules / Layout Rules를 코드로 검사한다. 최소 개수는 Pod 수에 비례한다 (pod_rules)."""
     rules = pod_rules(len(base_order))
     pods = [item.pod for item in plan.items]
@@ -26,8 +26,6 @@ def check_pod_plan(plan: PodOption, base_order: list[str], used_first_pod: str |
 
     if sorted(pods) != sorted(base_order):
         warnings.append(f"{len(base_order)}개 Pod가 한 번씩 들어 있지 않습니다: {', '.join(pods)}")
-    if used_first_pod and len(base_order) > 1 and pods and pods[0] == used_first_pod:
-        warnings.append(f"1순위가 이미 사용된 1순위 Pod({used_first_pod})와 같습니다.")
     moved = sum(1 for i, pod in enumerate(pods) if i >= len(base_order) or base_order[i] != pod)
     if moved < rules.min_moved:
         warnings.append(f"기본 순서 대비 위치가 바뀐 Pod가 {moved}개입니다 (최소 {rules.min_moved}개).")
@@ -87,7 +85,7 @@ class PodStep(TextStep):
             raise ValueError(f"입력에 없는 Pod 이름: {', '.join(unknown)}")
 
     def postprocess(self, run: RunState, slot: str, content: PodOption) -> list[str]:
-        return check_pod_plan(content, run.input.pod_names, run.input.used_first_pod)
+        return check_pod_plan(content, run.input.pod_names)
 
     def mock_option(self, run: RunState, slot: str, angle: str, index: int) -> PodOption:
         order = _mock_order(run.input.pod_names, index)

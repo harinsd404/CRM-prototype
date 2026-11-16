@@ -47,7 +47,6 @@
 | `persona` | string | ✔ | 타겟 페르소나(관심사). 빈 문자열 불가 |
 | `mood` | `Mood` | ✔ | 소구 강도 |
 | `template_id` | int \| null | – | 불러온 제품 템플릿 id (없으면 직접 입력) |
-| `used_first_pod` | string \| null | – | 앞선 타겟에서 이미 1순위로 쓴 Pod. ①에서 1순위로 다시 쓰면 경고. `pods`에 없는 이름이면 null로 바꾼다 |
 | `product_name` | string | ✔ | 영문 공식 제품명 |
 | `colors` | string | ✔ | 컬러 라인업, 쉼표로 구분. ③에서 제품 색은 이 중 하나여야 한다 |
 | `pods` | `PodInput[]` | ✔ | 이번에 쓰는 Pod, **기본 순서대로** 1~10개. 이름·영문 이름이 겹치면 422. 스펙은 **하나 이상 내용이 있어야 함** (없으면 422) |
@@ -68,7 +67,6 @@
   "target_id": "P1",
   "persona": "쇼핑, 패션",
   "mood": "HOT",
-  "used_first_pod": null,
   "product_name": "Galaxy Z Fold",
   "colors": "라벤더, 그라파이트, 크림, 피스타치오",
   "template_id": 1,
@@ -87,7 +85,6 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 ```text
 - 타겟 페르소나 : 쇼핑, 패션
 - 소구 강도(무드) : HOT
-- 이미 사용된 1순위 Pod : 없음
 - 제품명 : Galaxy Z Fold
 - 컬러 라인업 : 라벤더, 그라파이트, 크림, 피스타치오
 - Pod별 스펙(Fact) :
@@ -172,7 +169,7 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 | `items[].reason` | string | 이 순위에 둔 근거 |
 | `rationale` | string | 순서·레이아웃 조합의 기획 의도 |
 
-코드 검사 (`check_pod_plan` → `warnings`): 모든 Pod가 한 번씩인가 · 1순위가 `used_first_pod`와 다른가 · 기본 순서 대비 위치가 바뀐 Pod가 ⌈0.6n⌉개 이상인가 · 인접한 Pod에 같은 레이아웃이 없는가 · 레이아웃을 min(5, ⌈0.8n⌉)종 이상 썼는가. n = Pod 수, 5개면 원본 규칙(3개 · 4종)과 같다 (`domain.py pod_rules`).
+코드 검사 (`check_pod_plan` → `warnings`): 모든 Pod가 한 번씩인가 · 기본 순서 대비 위치가 바뀐 Pod가 ⌈0.6n⌉개 이상인가 · 인접한 Pod에 같은 레이아웃이 없는가 · 레이아웃을 min(5, ⌈0.8n⌉)종 이상 썼는가. n = Pod 수, 5개면 원본 규칙(3개 · 4종)과 같다 (`domain.py pod_rules`).
 
 ```json
 {

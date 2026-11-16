@@ -110,7 +110,6 @@ export interface RunInput {
   target_id: string;
   persona: string;
   mood: Mood;
-  used_first_pod: PodName | null;
   product_name: string;
   colors: string;
   pods: PodInput[]; // 기본 순서대로

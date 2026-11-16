@@ -18,7 +18,7 @@ function move(items: Item[], from: number, to: number): Item[] {
 }
 
 /** 선택한 ①안을 블록처럼 고친다: 드래그(또는 ↑↓)로 Pod 순서를 바꾸고, Pod마다 레이아웃을 고른다.
- *  저장하면 백엔드가 같은 규칙(1순위 중복, 이동 Pod 수, 레이아웃 연속·종류)으로 다시 검사한다. */
+ *  저장하면 백엔드가 같은 규칙(이동 Pod 수, 레이아웃 연속·종류)으로 다시 검사한다. */
 export default function PodEditBox({ content, disabled, onSave }: Props) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState(content.items);
