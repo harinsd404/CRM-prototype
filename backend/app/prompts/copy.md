@@ -1,7 +1,7 @@
 <!--
 ② 카피 단계. 원본: original/p1_pod_copy.md 의 Core Rules, Writing Rules, 팩트체크, [6] 기획 의도.
 ①에서 확정한 Pod 순서·레이아웃({pod_plan})을 전제로 한다.
-Pod 수·최소 개수·공식 표기({official_terms}, 제품 프로필의 copy_terms)는 코드가 채운다 (copy_rule_vars). 글자 수, 헤드카피 유형 분포, 어미 배열 중복, eyebrow는 코드가 다시 검사한다 ([7] 자가 점검 대체).
+Pod 수·최소 개수·공식 표기({official_terms}, 제품 프로필의 copy_terms)는 코드가 채운다 (copy_rule_vars). 글자 수, 헤드카피 유형 분포, eyebrow는 코드가 다시 검사한다 ([7] 자가 점검 대체).
 -->
 ## system
 # Role & Objective

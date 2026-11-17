@@ -141,9 +141,6 @@ def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) 
         warnings.append(f"헤드카피 구조 유형을 {len(types)}종만 썼습니다 (최소 {rules.min_headline_types}종).")
     if overused := [t for t, n in types.items() if n > rules.max_same_headline_type]:
         warnings.append(f"같은 헤드카피 유형을 {rules.max_same_headline_type}회 넘게 썼습니다: {', '.join(overused)}")
-    endings = [p.ending_order.replace(" ", "") for p in copy.pods]
-    if len(set(endings)) < len(endings):
-        warnings.append("어미 배열이 같은 Pod가 있습니다.")
     return warnings
 
 
