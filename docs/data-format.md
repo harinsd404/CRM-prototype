@@ -297,6 +297,8 @@ Pod마다 슬롯이 하나씩 있고, 슬롯마다 아래 안이 3개씩 생긴�
 연출안 프롬프트에는 무드별 빛·시간대(`MOOD_GUIDES`: HOT 저녁·네온 / WARM 낮 자연광 / COLD 확산광)와 다른 Pod에서 이미 쓴 장면·컬러(고른 안, 없으면 만든 안 전부)를 넘긴다.
 장면이 무드와 맞지 않는 빛(HOT인데 '햇살', '노을' 등)이면 경고.
 
+화면이 보이는 상태면 제품 규칙의 `# Screen` 뒤에 공통 `@screen`(숫자·시각·글자 없이 링·막대·점으로만)을 붙인다. 시계처럼 화면이 작으면 모델이 깨진 숫자를 그리기 쉬워서다.
+
 얼굴 노출은 세 겹으로 막는다. ① 연출안의 인물·구도에 얼굴이 들어오는 말(입가, 표정, 시선…)이 있으면 이유를 알려 주고 한 번 다시 쓰게 하고, 그래도 남으면 경고만 남긴다.
 ② 이미지 프롬프트의 `# No face`가 제품별 자세 규칙(`person_rules`)보다 우선하고, Input Data에 프레이밍(턱 아래에서 자름)을 붙인다. 이미지 수정 프롬프트도 얼굴이 보이면 잘라 낸다.
 ③ 다 그린 뒤 `face_visible`로 판정한다. 다시 그리지는 않는다 (생성 요청이 Cloudflare 100초 안에 끝나야 하고, 이미지 한도를 더 쓰므로) — 경고를 보고 사람이 '수정 요청'을 하거나 그 Pod를 다시 생성한다.
@@ -608,7 +610,7 @@ Pod별 기본 연출(`pod_visuals`)과 사진이 부족하거나 흐린 점(`war
 
 | API | 하는 일 |
 |---|---|
-| `POST /api/product-pages/import` (`{url, pods}`) | 주소를 따라가 제품 기본 경로를 정하고(모델 주소 `SM-…/`는 구매 페이지로 넘어감) 제품 정보(`/`)·스펙(`specs/`)·구매(`buy/`) 페이지를 받는다. 모든 페이지에 똑같이 있는 연속 6줄 이상(메뉴·팝업)을 지우고 글만 Vertex Gemini에 보내 `{product_name, colors, pods[{name, key, spec}]}`로 받는다. `pods`(지금 Pod 이름)를 주면 그 이름별로 스펙을 나누고, 없으면 4~6개를 제안한다. 스펙의 수치가 페이지 글에 없으면 `warnings`. 사진 후보 `images[{url, width, height}]`: `images.samsung.com` 이미지 중 아이콘·모바일용·띠 배너·긴 변 600px 미만을 뺀 것(구매 페이지 갤러리 먼저, 최대 60장) |
+| `POST /api/product-pages/import` (`{url, pods}`) | 주소를 따라가 제품 기본 경로를 정하고(모델 주소 `SM-…/`는 구매 페이지로 넘어감) 제품 정보(`/`)·스펙(`specs/`)·구매(`buy/`) 페이지를 받는다. 모든 페이지에 똑같이 있는 연속 6줄 이상(메뉴·팝업)을 지우고 글만 Vertex Gemini에 보내 `{product_name, colors, pods[{name, key, spec}]}`로 받는다. `pods`(지금 Pod 이름)를 주면 그 이름별로 스펙을 나누고, 없으면 4~6개를 제안한다(이름은 eyebrow로 쓰이므로 `POD_NAME_MAX` 10자 이내, 넘으면 경고 — 입력 화면의 Pod 칸도 같은 기준으로 표시). 스펙의 수치가 페이지 글에 없으면 `warnings`. 사진 후보 `images[{url, width, height}]`: `images.samsung.com` 이미지 중 아이콘·모바일용·띠 배너·긴 변 600px 미만을 뺀 것(구매 페이지 갤러리 먼저, 최대 60장) |
 | `POST /api/product-pages/images` (`{urls}`, 최대 10) | 고른 후보를 받아 올린 사진(`data/uploads`)으로 저장한다. 결과 `[{source, name, url}]`의 `name`은 직접 올린 사진과 똑같이 쓴다 |
 
 - 받는 주소는 `www.samsung.com`만, 리다이렉트는 `*.samsung.com`과 접속 대기열 `*.queue-it.net`만 따라간다 (서버가 대신 받는 주소라 SSRF 방지). 사진은 `images.samsung.com`만.

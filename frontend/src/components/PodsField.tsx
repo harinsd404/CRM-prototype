@@ -1,4 +1,4 @@
-import { MAX_PODS, type TemplatePod } from "../types";
+import { MAX_PODS, POD_NAME_MAX, type TemplatePod } from "../types";
 
 interface Props {
   rows: TemplatePod[]; // enabled = 이번 시안에 쓸지
@@ -58,8 +58,14 @@ export default function PodsField({ rows, onChange, onReset }: Props) {
               onChange={(e) => update(i, { name: e.target.value })}
               placeholder="Pod 이름 (예: 카메라)"
               maxLength={30}
-              className={`${inputClass} w-40 font-medium`}
+              title={`시안의 작은 제목(eyebrow)으로 그대로 씁니다. ${POD_NAME_MAX}자 이내 권장`}
+              className={`${inputClass} w-40 font-medium ${row.name.length > POD_NAME_MAX ? "border-amber-400" : ""}`}
             />
+            {row.name.length > POD_NAME_MAX && (
+              <span className="text-xs text-amber-700">
+                {row.name.length}자 — 시안 제목으로 길어요 ({POD_NAME_MAX}자 이내 권장)
+              </span>
+            )}
             <input
               value={row.key}
               onChange={(e) => update(i, { key: e.target.value })}

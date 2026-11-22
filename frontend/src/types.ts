@@ -17,6 +17,7 @@ export const MAIN_SLOT = "main";
 export type PodName = string;
 // backend/app/core/domain.py MAX_PODS와 맞춘다
 export const MAX_PODS = 10;
+export const POD_NAME_MAX = 10; // backend/app/core/domain.py POD_NAME_MAX (eyebrow로 쓰여 길면 어색함, 경고만)
 
 export type Layout = "L1" | "L2" | "L3" | "L4" | "L5";
 export const LAYOUTS: Layout[] = ["L1", "L2", "L3", "L4", "L5"];

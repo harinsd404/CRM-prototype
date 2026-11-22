@@ -1,6 +1,6 @@
 <!-- 이미지 모델에 보내는 프롬프트의 공통 골격 (원본 P2를 조각으로 나눈 것). 모든 제품이 같다.
      `## @이름` 섹션 단위로 나뉘고, 코드(steps/image.py의 build_image_prompt)가 순서대로 붙인다:
-     base → [제품 프로필: # Device, 상태 규칙, # Screen] → person(손·인물이 있을 때) 또는 no_person → safe_zone(L3일 때)
+     base → [제품 프로필: # Device, 상태 규칙, # Screen] → screen(화면이 보일 때) → person(손·인물이 있을 때) 또는 no_person → safe_zone(L3일 때)
      → mood_HOT·mood_WARM·mood_COLD 중 1개 → # Input Data → check.
      제품마다 다른 부분(기기 묘사, 상태별 비율·보이는 면, 화면 규칙, 확인 항목)은 템플릿의 제품 프로필(app/core/profile.py)에 있다.
      {device_noun}·{product_check}·{person_rules}는 코드가 프로필 값으로 바꾼다. LangChain을 거치지 않으므로 다른 중괄호는 그대로 써도 된다. -->
@@ -69,6 +69,13 @@ natural soft daylight, gentle shadows.
 # Mood: COLD
 Calm, efficient, trustworthy. Low saturation, neutral grey, white and charcoal,
 diffused even light, minimal shadows, clean orderly composition.
+
+## @screen
+
+# Screen (every product)
+- Nothing readable on the screen: no digits, numerals, clock numbers, time or date readouts, letters or logos.
+- Show values only as shapes — rings, arcs, bars, dots, icons. Clock hands are fine; the numbers around them are not.
+- A screen too small to show clean detail stays simple (a few rings or a plain gradient) rather than tiny fake text.
 
 ## @no_person
 

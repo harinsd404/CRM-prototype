@@ -275,7 +275,7 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
         common["base"].replace("{device_noun}", profile.device_noun),
         f"# Device\n{profile.device_rules.strip()}",
         state.rules.strip(),
-        *([f"# Screen\n{profile.screen_rules.strip()}"] if shows_screen else []),
+        *([f"# Screen\n{profile.screen_rules.strip()}", common["screen"]] if shows_screen else []),
         common["person"].replace("{person_rules}", profile.person_rules.strip() or _DEFAULT_PERSON_RULES)
         if has_person
         else common["no_person"],

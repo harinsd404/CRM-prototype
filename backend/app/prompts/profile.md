@@ -32,12 +32,12 @@
 - person_rules: 손·인물이 함께 나올 때 이미지 모델용 영어 규칙 목록. 제품을 쓰는 자세, 손이 닿는 곳, 사람과의 크기 비교.
   얼굴은 이미지에 나오지 않으므로, 제품을 얼굴 쪽으로 드는 자세(말하기, 통화)는 "가슴 높이까지만 든다"처럼 얼굴이 안 들어오게 씁니다.
   (예: "- Worn on the left wrist, face toward the camera." / "- The refrigerator stays in place; a hand only touches the door handle.")
-- screen_rules: 화면이 있으면 화면에 보여줄 것의 영어 규칙 (글자·숫자·로고 없는 추상 UI). 화면이 없으면 빈 문자열.
+- screen_rules: 화면이 있으면 화면에 보여줄 것의 영어 규칙 (글자·숫자·로고 없는 추상 UI). 시계 숫자·시각·날짜 표시도 숫자이므로 쓰지 않고, 수치는 링·막대·점으로만. 화면이 없으면 빈 문자열.
 - check: 출력 전 확인할 이 제품의 핵심 항목을 영어로 · 구분 한 줄 (예: the side named above facing the camera · round face · two side buttons).
 - edit_rules: 이미지를 고칠 때 제품이 바뀌지 않게 지킬 영어 규칙 목록 (형태·비율·특징 부위 개수·몸체 색).
 - reference_color: 사진 속 제품의 컬러를 입력 컬러 라인업의 이름으로. 알 수 없으면 빈 문자열.
 - color_slot: 여러 컬러가 한 번에 찍힌 사진이 있으면 그 자리 key, 없으면 null.
-- copy_terms: 카피에서 번역하거나 바꾸면 안 되는 공식 표기를 입력 스펙에서 골라 한국어로 쉼표 나열 (예: "Galaxy AI", "Now Brief").
+- copy_terms: 카피에서 번역하거나 바꾸면 안 되는 공식 표기를 입력 스펙에서 골라 쉼표로 나열. 영문 기능·서비스명(Google Gemini, Wear OS 등)은 특히 빠뜨리지 않습니다 (예: "Galaxy AI", "Now Brief", "Google Gemini").
 
 # 함께 쓰는 것
 - photo_assignments: 첨부 사진 번호(1부터)마다 배정한 자리 key. 자리로 쓰지 않는 사진은 빼면 추가 사진으로 보냅니다.

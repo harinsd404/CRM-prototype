@@ -22,7 +22,7 @@ from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
 from app.config import settings
-from app.core.domain import MAX_PODS
+from app.core.domain import MAX_PODS, POD_NAME_MAX
 from app.core.prompts import load_prompt
 from app.llm import get_chat_model
 from app.steps.copy import unsourced_numbers
@@ -315,7 +315,13 @@ async def _ask(request: PageImportRequest, pages: FetchedPages) -> PageInfo:
     pods = "\n".join(f"- {name}" for name in request.pods) or "(없음 — 페이지 내용으로 4~6개를 제안)"
     model = get_chat_model().with_structured_output(PageInfo, method="json_schema")
     chain = load_prompt("product_page") | model
-    variables = {"url": pages.base_url, "pods": pods, "pages": _pages_block(pages), "max_pods": str(MAX_PODS)}
+    variables = {
+        "url": pages.base_url,
+        "pods": pods,
+        "pages": _pages_block(pages),
+        "max_pods": str(MAX_PODS),
+        "pod_name_max": str(POD_NAME_MAX),
+    }
     return await asyncio.wait_for(chain.ainvoke(variables), settings.llm_timeout * 2)
 
 
@@ -341,6 +347,8 @@ def _check(info: PageInfo, pages: FetchedPages, request: PageImportRequest) -> l
         got = {pod.name for pod in info.pods}
         if empty := [name for name in request.pods if name not in got]:
             warnings.append(f"페이지에서 스펙을 찾지 못한 Pod: {', '.join(empty)}")
+    if long := [pod.name for pod in info.pods if pod.name not in request.pods and len(pod.name) > POD_NAME_MAX]:
+        warnings.append(f"Pod 이름이 {POD_NAME_MAX}자를 넘어 시안 제목으로 길 수 있습니다: {', '.join(long)}")
     if "specs/" not in pages.texts:
         used = " · ".join(_PAGE_NAMES[sub] for sub in pages.texts)
         warnings.append(f"스펙 페이지가 없어 {used}만 보고 정리했습니다. 수치를 한 번 더 확인해 주세요.")

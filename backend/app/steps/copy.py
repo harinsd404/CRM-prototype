@@ -13,6 +13,7 @@ from app.steps.base import TextStep, invoke_structured
 HEADLINE_MAX = 20
 BODY_MAX = 110
 SHORTEN_ATTEMPTS = 2
+_TONE_DOWN_SLACK = 30  # 과장 보정 결과가 글자 수를 이만큼까지 넘어도 받는다 (줄이기 단계가 뒤에서 맞춤)
 
 
 class FactCheck(BaseModel):
@@ -87,15 +88,16 @@ _CLAIMS: list[tuple[re.Pattern[str], tuple[str, ...]]] = [
         (r"가장(?!자리)", ("가장",)),
         (r"역대\w*", ("역대",)),
         (r"혁신적\w*|획기적\w*", ("혁신", "획기")),
-        (r"(끊김|끊임|버벅임|버벅거림|렉|딜레이|지연|막힘)\s?(없이|없는|없고|없어|없죠)", ("끊김", "끊임", "버벅", "렉", "딜레이", "지연", "막힘")),
+        (r"(끊김|끊임|버벅임|버벅거림|렉|딜레이|지연|막힘)\s?(없이|없는|없고|없어|없죠|을 줄|을 최소|이 줄)", ("끊김", "끊임", "버벅", "렉", "딜레이", "지연", "막힘")),
         (r"걱정\s?(없이|없는|없고|없어|없죠|을 덜|을 줄|이 사라)", ("걱정",)),
         (r"하루\s?종일|온종일|밤새\w*|밤늦게까지|며칠", ("종일", "밤새", "밤늦", "며칠")),
+        (r"오래\s?(가|쓰|사용|지속)\w*|긴 사용 시간|장시간", ("오래", "사용 시간", "사용시간", "장시간")),
         (r"빠른|빠르게|빨라\w*|신속\w*|재빠\w*", ("빠르", "빠른", "신속", "속도")),
         (r"매끄러\w*|매끄럽\w*", ("매끄",)),
         (r"부드러\w*|부드럽\w*", ("부드",)),
         (r"쾌적\w*", ("쾌적",)),
         (r"강력\w*", ("강력",)),
-        (r"정밀\w*|정확\w*|꼼꼼\w*|철저\w*", ("정밀", "정확", "꼼꼼", "철저")),
+        (r"정밀\w*|정확\w*|꼼꼼\w*|철저\w*|면밀\w*|과학적\w*", ("정밀", "정확", "꼼꼼", "철저", "면밀", "과학")),
         (r"넉넉\w*|든든\w*", ("넉넉", "든든")),
         (r"진단\w*|치료\w*|예방\w*", ("진단", "치료", "예방")),
     ]
@@ -196,8 +198,10 @@ async def tone_down_copy(copy: CopyOption, sources: dict[str, str]) -> None:
             and _keeps_facts(p.headline, headline, sentences=False)
             and _keeps_facts(p.body, body, sentences=True)
             and (not scene or scene not in _compact(p.body) or scene in _compact(body))
-            and len(headline) <= max(HEADLINE_MAX, len(p.headline))
-            and len(body) <= max(BODY_MAX, len(p.body))
+            # 길이는 바로 다음 줄이기 단계(shorten_copy)가 맞춘다. 실측: 과장을 사실로 바꾸면 110자를 조금 넘기 쉬워
+            # 길이로 거르면 제대로 고친 결과를 버렸다. 터무니없이 길어진 것만 버린다
+            and len(headline) <= max(HEADLINE_MAX, len(p.headline)) + _TONE_DOWN_SLACK
+            and len(body) <= max(BODY_MAX, len(p.body)) + _TONE_DOWN_SLACK
         ):
             p.headline, p.body = headline, body
 

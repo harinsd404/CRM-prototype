@@ -5,6 +5,7 @@ from typing import Literal
 
 # Pod는 템플릿마다 다르다 (예: Fold는 디자인·디스플레이·성능·카메라·Now nudge). 이름 그대로 슬롯 이름으로 쓴다. 한 실행의 최대 Pod 수
 MAX_PODS = 10
+POD_NAME_MAX = 10  # Pod 이름은 시안의 eyebrow(작은 제목)로 그대로 쓰여서 이보다 길면 어색하다 (경고만)
 Layout = Literal["L1", "L2", "L3", "L4", "L5"]
 Mood = Literal["HOT", "WARM", "COLD"]
 Ratio = Literal["1:1", "4:3", "16:9"]
