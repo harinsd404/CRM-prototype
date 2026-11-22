@@ -164,8 +164,6 @@ _EDIT_PROMPT = """Edit the FIRST attached image according to the request below.
 - Keep exactly ONE device.
 - Output ONE continuous photograph. No collage, borders, bars, or panels.
 - Render NO text, letters, numbers, logos, or watermarks.
-- No part of a face (eyes, nose, mouth, lips, chin) in the frame. If the image to edit shows one,
-  crop or reframe so the top edge cuts below the chin — even if the request does not mention it.
 
 Request: {request}
 """

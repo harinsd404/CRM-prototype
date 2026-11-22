@@ -39,12 +39,11 @@ If no product image is attached, output only: "Attach the product reference imag
 {person_rules}
 - Fingers never cover the screen or the device's key features.
 
-# No face (overrides every pose above)
-- No part of a face is in the frame: no eyes, nose, mouth, lips, chin or profile.
-- Frame the person from the shoulders or neck down, or show only hands and arms.
-  The top edge of the image cuts below the chin. A head seen fully from behind is fine.
-- If the device is raised toward the face (speaking to it, a call, checking it up close),
-  shoot a tight close-up of the hand and the device so the head stays outside the frame.
+# People and faces
+- Faces may appear. A person looks like the target persona in [Input Data] (age, style), with a natural,
+  candid expression — absorbed in what they are doing, not posing or staring into the lens.
+- Realistic, undistorted faces and skin. Never resemble a real celebrity or public figure.
+- The device stays the hero: it is in sharp focus and clearly visible; the face may be softer or partly out of frame.
 
 ## @safe_zone
 

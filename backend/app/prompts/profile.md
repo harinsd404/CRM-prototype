@@ -30,7 +30,6 @@
 - usage: 사람이 이 제품을 실제로 어떻게 쓰는지 한국어 한 줄. 연출안 작성자가 손·인물 장면을 쓸 때 따릅니다.
   (예: 워치 → 손목에 차고 화면을 봄, 냉장고 → 주방에 설치돼 있고 사람은 문을 열거나 옆에 섬, 이어폰 → 귀에 꽂거나 케이스를 손에 쥠)
 - person_rules: 손·인물이 함께 나올 때 이미지 모델용 영어 규칙 목록. 제품을 쓰는 자세, 손이 닿는 곳, 사람과의 크기 비교.
-  얼굴은 이미지에 나오지 않으므로, 제품을 얼굴 쪽으로 드는 자세(말하기, 통화)는 "가슴 높이까지만 든다"처럼 얼굴이 안 들어오게 씁니다.
   (예: "- Worn on the left wrist, face toward the camera." / "- The refrigerator stays in place; a hand only touches the door handle.")
 - screen_rules: 화면이 있으면 화면에 보여줄 것의 영어 규칙 (글자·숫자·로고 없는 추상 UI). 시계 숫자·시각·날짜 표시도 숫자이므로 쓰지 않고, 수치는 링·막대·점으로만. 화면이 없으면 빈 문자열.
 - check: 출력 전 확인할 이 제품의 핵심 항목을 영어로 · 구분 한 줄 (예: the side named above facing the camera · round face · two side buttons).
