@@ -284,6 +284,17 @@ export interface RunState {
   input: RunInput;
   steps: { [S in StepName]: StepState<S> };
   html: string | null;
+  job?: Job | null; // 서버에서 도는 생성·수정 작업, 또는 마지막 작업이 실패했으면 그 오류
+}
+
+/** 서버 백그라운드 작업 (backend/app/core/state.py Job). 요청은 바로 응답하고 화면이 실행을 다시 읽어 끝을 기다린다 */
+export interface Job {
+  id: string;
+  kind: "generate" | "revise";
+  step: StepName;
+  slot: string | null;
+  started_at: string;
+  error: string | null;
 }
 
 /** ①에서 고른(또는 고친) Pod 순서. 아직 고르지 않았으면 빈 목록. */

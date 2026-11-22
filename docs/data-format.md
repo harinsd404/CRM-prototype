@@ -133,6 +133,12 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 | `input` | `RunInput` | 1절 |
 | `steps` | `{"pod"\|"copy"\|"image": {"slots": {슬롯명: SlotState}}}` | 단계별 상태. 아직 생성 전이면 `slots`가 빈 객체 |
 | `html` | string \| null | ④ 조립 결과. 앞 단계를 다시 생성하면 null, 고치기만 하면 바로 다시 조립 |
+| `job` | `Job` \| null | 서버에서 도는 생성·수정 작업 `{id, kind: generate\|revise, step, slot, started_at, error}`. 끝나면 null, 끝내 실패하면 `error`가 남는다 (다음 작업이 덮어씀). 서버가 재시작되면 돌던 작업은 "중단됨" 오류로 정리된다 |
+
+**생성·수정은 백그라운드 작업이다.** `POST …/generate`·`POST …/revise`는 검사(선행 단계·슬롯·요청 한도·이미지 한도)만 하고 `job`을 기록한 실행을 바로 돌려준다.
+화면은 `GET /api/runs/{id}`를 2초마다 읽어 `job.id`가 바뀌거나 사라지면 끝, `job.error`가 있으면 실패로 본다 (`frontend/src/api.ts waitForJob`).
+이미지 한 Pod가 429 대기까지 겹치면 2분을 넘겨, 요청이 끝날 때까지 기다리면 Cloudflare가 100초에서 끊었다(524, 버즈4 프로 QA에서 Pod 7개 중 5개).
+한 실행에 작업은 하나만 돈다 (작업 중 또 생성·수정하면 409). 선택·직접 수정·그대로 쓰기는 작업 중에도 바로 된다.
 
 ```json
 {

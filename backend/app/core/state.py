@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -184,6 +184,18 @@ class StepState(BaseModel):
         return bool(self.slots) and all(slot.selected is not None for slot in self.slots.values())
 
 
+class Job(BaseModel):
+    """서버에서 백그라운드로 도는 생성·수정 작업. 요청은 바로 응답하고 화면은 실행을 다시 읽어 끝을 기다린다.
+    이미지 한 Pod가 429 대기까지 겹치면 2분을 넘겨, 요청이 끝날 때까지 붙잡고 있으면 Cloudflare가 100초에서 끊었다(524)."""
+
+    id: str
+    kind: Literal["generate", "revise"]
+    step: str
+    slot: str | None = None
+    started_at: datetime
+    error: str | None = None  # 끝내 실패한 이유. 성공하면 job 자체가 None이 된다
+
+
 class RunState(BaseModel):
     id: str
     created_at: datetime
@@ -191,6 +203,7 @@ class RunState(BaseModel):
     input: RunInput
     steps: dict[str, StepState] = Field(default_factory=lambda: {name: StepState() for name in STEP_ORDER})
     html: str | None = None
+    job: Job | None = None  # 지금 도는 작업, 또는 마지막 작업이 실패했으면 그 오류
 
     def selected(self, step_name: str, slot: str = MAIN_SLOT) -> dict[str, Any]:
         option = self.steps[step_name].slots[slot].selected_option

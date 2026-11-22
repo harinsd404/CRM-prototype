@@ -147,6 +147,25 @@ def mutate_run(run_id: str, change: Callable[[RunState], None]) -> RunState:
         return run
 
 
+def clear_unfinished_jobs() -> int:
+    """서버를 시작할 때: 지난번에 돌다가 서버가 꺼져 끝나지 못한 작업을 실패로 표시하고, 만드는 중 표시(pending)를 지운다.
+    그대로 두면 화면이 끝나지 않는 작업을 계속 기다린다."""
+    with session_scope() as db:
+        ids = [row.id for row in db.scalars(select(Run).where(Run.state.contains('"job":{')))]
+    cleared = 0
+    for run_id in ids:
+        run = load_run(run_id)
+        if run is None or run.job is None or run.job.error:
+            continue
+        run.job = run.job.model_copy(update={"error": "서버가 다시 시작되어 작업이 중단되었습니다. 다시 생성해 주세요."})
+        for step in run.steps.values():
+            for slot in step.slots.values():
+                slot.pending = 0
+        save_run(run)
+        cleared += 1
+    return cleared
+
+
 def load_run(run_id: str, user_id: int | None = None) -> RunState | None:
     """user_id를 주면 그 사용자의 실행일 때만 돌려준다."""
     with session_scope() as db:

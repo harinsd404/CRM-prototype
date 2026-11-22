@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import auth, feedback, product_images, product_pages, profiles, runs, templates
 from app.config import BACKEND_DIR, settings
 from app.core.auth import SESSION_COOKIE, user_from_token
+from app.core import store
 from app.core.db import init_db
 from app.core.guard import images_used_today
 from app.providers.image import active_image_model
@@ -12,6 +13,7 @@ from app.providers.image import active_image_model
 settings.data_dir.mkdir(parents=True, exist_ok=True)
 settings.upload_dir.mkdir(parents=True, exist_ok=True)
 init_db()
+store.clear_unfinished_jobs()
 
 app = FastAPI(title="CRM 시안 생성 프로토타입")
 

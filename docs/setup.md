@@ -267,7 +267,8 @@ curl -s http://localhost:7777/park/api/health   # 헬스 체크
 ```
 
 - 백엔드가 프론트 빌드 결과(`frontend/dist`)까지 같이 내보내므로 서버에서는 `pnpm dev`를 띄우지 않는다. 프론트를 고쳤으면 `deploy.sh`를 다시 실행해 빌드한다.
-- Cloudflare는 응답이 100초를 넘으면 524로 끊는다. 로컬에서는 되는데 서버에서만 524가 나면 이 제한 때문이다.
+- Cloudflare는 응답이 100초를 넘으면 524로 끊는다. 생성·수정은 백그라운드 작업이라 바로 응답하지만(화면이 끝날 때까지 다시 읽음), 그 밖의 오래 걸리는 요청(제품 규칙 생성, 페이지 가져오기, 피드백 개선안)은 아직 요청 안에서 돈다. 서버에서만 524가 나면 그쪽을 의심한다.
+- `systemctl restart crm`을 하면 돌던 생성 작업은 끊긴다. 화면에 "서버가 다시 시작되어 작업이 중단되었습니다"가 뜨면 다시 생성한다.
 - "삼성닷컴 제품 페이지에서 가져오기"는 서버에서 `www.samsung.com`, `images.samsung.com`으로 나가는 접속이 필요하다. 서버에서 확인: `curl -sI https://www.samsung.com/sec/ | head -1`
 
 **포트를 바꿀 때**: `PORT=8080 bash /opt/crm/infra/deploy.sh`

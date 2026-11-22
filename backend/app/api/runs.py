@@ -1,11 +1,14 @@
+import asyncio
 import io
 import json
 import logging
 import re
 import zipfile
 from datetime import datetime
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -20,7 +23,7 @@ from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE
 from app.core import templates
 from app.core.feedback import FeedbackIn, add_feedback
 from app.core.templates import ProfileConflict, TemplateNameTaken, TemplateOut, get_template
-from app.core.state import MAIN_SLOT, STEP_ORDER, Option, RunInput, RunState, SlotState
+from app.core.state import MAIN_SLOT, STEP_ORDER, Job, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
 from app.steps.copy import CopyOption, CopyStep
 from app.steps.image import ImageOption, ImageStep
@@ -201,14 +204,15 @@ async def generate_step(
     if feedback:  # 다시 만들기 전 결과에 대한 요청이라 생성 전에 남긴다
         _log_request(run, user, step_name, slot, feedback, "regenerate")
 
-    with guard.run_lock(run_id):
-        if step_name == "image":
-            return await _generate_images(step, run, slots, feedback)
+    if step_name == "image":
+        return _start_image_job(step, run, slots, feedback)
+
+    async def work() -> None:
         try:
             generated = await step.generate(run, slots, feedback)
         except Exception as e:
             logger.exception("%s 단계 생성 실패", step_name)
-            raise HTTPException(502, f"'{step_name}' 생성에 실패했습니다: {e}") from e
+            raise JobFailed(f"'{step_name}' 생성에 실패했습니다: {e}") from e
 
         def apply(fresh: RunState) -> None:
             state = fresh.steps[step_name]
@@ -218,10 +222,71 @@ async def generate_step(
                 state.slots[slot] = generated[slot]
             fresh.reset_after(step_name)
 
-        return store.mutate_run(run_id, apply)
+        store.mutate_run(run_id, apply)
+
+    return _start_job(run_id, "generate", step_name, slot, work)
 
 
-async def _generate_images(step: Step, run: RunState, slots: list[str], feedback: str | None) -> RunState:
+class JobFailed(Exception):
+    """백그라운드 작업이 실패했을 때 화면에 보여 줄 말."""
+
+
+_jobs: set[asyncio.Task] = set()  # 돌고 있는 작업 (참조를 들고 있지 않으면 끝나기 전에 사라질 수 있다)
+
+
+def _start_job(
+    run_id: str,
+    kind: str,
+    step_name: str,
+    slot: str | None,
+    work: Callable[[], Awaitable[None]],
+    on_start: Callable[[RunState], None] | None = None,
+) -> RunState:
+    """검사가 끝난 생성·수정을 백그라운드 작업으로 돌리고 바로 응답한다 (Cloudflare 100초 제한).
+    작업은 실행 상태의 job에 기록되고, 끝나면 결과를 저장하며 job을 지운다. 실패하면 job.error를 남긴다.
+    화면은 실행을 다시 읽어 job이 끝날 때까지 기다린다 (frontend api.ts waitForJob)."""
+    guard.lock_run(run_id)
+    job = Job(id=uuid4().hex[:8], kind=kind, step=step_name, slot=slot, started_at=datetime.now())
+
+    def begin(fresh: RunState) -> None:
+        fresh.job = job
+        if on_start:
+            on_start(fresh)
+
+    try:
+        state = store.mutate_run(run_id, begin)
+    except BaseException:
+        guard.unlock_run(run_id)
+        raise
+
+    async def runner() -> None:
+        error: str | None = None
+        try:
+            await work()
+        except JobFailed as e:
+            error = str(e)
+        except HTTPException as e:
+            error = str(e.detail)
+        except Exception as e:
+            logger.exception("작업 실패: %s/%s", step_name, slot)
+            error = f"작업에 실패했습니다: {e}"
+        finally:
+            def end(fresh: RunState) -> None:
+                if fresh.job and fresh.job.id == job.id:
+                    fresh.job = job.model_copy(update={"error": error}) if error else None
+
+            try:
+                store.mutate_run(run_id, end)
+            finally:
+                guard.unlock_run(run_id)
+
+    task = asyncio.create_task(runner())
+    _jobs.add(task)
+    task.add_done_callback(_jobs.discard)
+    return state
+
+
+def _start_image_job(step: Step, run: RunState, slots: list[str], feedback: str | None) -> RunState:
     """이미지는 한 장에 수십 초가 걸려서, 한 장씩 끝나는 대로 저장한다. 화면은 생성 중에 실행을 다시 읽어 바로 보여준다.
     생성 중에도 사람이 다른 Pod(또는 먼저 나온 이미지)를 고를 수 있으므로, 저장할 때마다 최신 상태에 이 생성의 변경만 얹는다.
     모든 안이 실패하면 원래 안으로 되돌린다."""
@@ -236,8 +301,6 @@ async def _generate_images(step: Step, run: RunState, slots: list[str], feedback
             state.slots[s] = SlotState(pending=settings.num_options)
         fresh.reset_after("image")
 
-    store.mutate_run(run.id, start)
-
     def on_option(slot: str, option: Option | None, failure: str | None) -> None:
         def add(fresh: RunState) -> None:
             current = fresh.steps["image"].slots.get(slot)
@@ -251,30 +314,33 @@ async def _generate_images(step: Step, run: RunState, slots: list[str], feedback
 
         store.mutate_run(run.id, add)
 
-    try:
-        await step.generate(run, slots, feedback, on_option)
-    except Exception as e:
-        logger.exception("image 단계 생성 실패")
+    async def work() -> None:
+        try:
+            await step.generate(run, slots, feedback, on_option)
+        except Exception as e:
+            logger.exception("image 단계 생성 실패")
 
-        def restore(fresh: RunState) -> None:
-            state = fresh.steps["image"]
-            fresh.html = html_backup[0]
-            for s, old in backup.items():
-                if old is None:
-                    state.slots.pop(s, None)
-                else:
-                    state.slots[s] = old
+            def restore(fresh: RunState) -> None:
+                state = fresh.steps["image"]
+                fresh.html = html_backup[0]
+                for s, old in backup.items():
+                    if old is None:
+                        state.slots.pop(s, None)
+                    else:
+                        state.slots[s] = old
 
-        store.mutate_run(run.id, restore)
-        raise HTTPException(502, f"'image' 생성에 실패했습니다: {e}") from e
+            store.mutate_run(run.id, restore)
+            raise JobFailed(f"'image' 생성에 실패했습니다: {e}") from e
 
-    # 안은 끝나는 대로 이미 붙었다 (collect_options가 돌려주는 순서와 같다). 남은 표시만 정리한다
-    def finish(fresh: RunState) -> None:
-        for s in slots:
-            if current := fresh.steps["image"].slots.get(s):
-                current.pending = 0
+        # 안은 끝나는 대로 이미 붙었다 (collect_options가 돌려주는 순서와 같다). 남은 표시만 정리한다
+        def finish(fresh: RunState) -> None:
+            for s in slots:
+                if current := fresh.steps["image"].slots.get(s):
+                    current.pending = 0
 
-    return store.mutate_run(run.id, finish)
+        store.mutate_run(run.id, finish)
+
+    return _start_job(run.id, "generate", "image", slots[0] if len(slots) == 1 else None, work, on_start=start)
 
 
 @router.post("/{run_id}/steps/{step_name}/select", response_model=RunState)
@@ -329,52 +395,59 @@ async def revise_option(run_id: str, step_name: str, body: ReviseRequest, user: 
     pod = body.slot if isinstance(step, ImageStep) else (body.pods[0] if len(body.pods) == 1 else None)
     _log_request(run, user, step_name, pod, request, "revise")
 
-    with guard.run_lock(run_id):
-        if isinstance(step, ImageStep):
-            base = slot.options[body.index]
+    if isinstance(step, ImageStep):
+        base = slot.options[body.index]
+
+        async def work_image() -> None:
             try:
                 revised = await step.revise_option(run, body.slot, ImageOption.model_validate(base.content), request)
             except Exception as e:
                 logger.exception("%s 수정 요청 실패", step_name)
-                raise HTTPException(502, f"수정 요청 처리에 실패했습니다: {e}") from e
+                raise JobFailed(f"수정 요청 처리에 실패했습니다: {e}") from e
             option = step.make_option(run, body.slot, f"{body.index + 1}번 수정 · {request}", revised)
 
             def add(fresh: RunState) -> None:
                 # 수정하는 동안 다른 Pod를 고르거나 했을 수 있으니 최신 상태에 새 안만 붙이고 고른다
                 target = fresh.steps[step_name].slots.get(body.slot)
                 if target is None:
-                    raise HTTPException(409, f"수정하는 사이 '{body.slot}' 이미지가 다시 생성되었습니다.")
+                    raise JobFailed(f"수정하는 사이 '{body.slot}' 이미지가 다시 생성되었습니다.")
                 before = _snapshot(fresh)
                 target.options.append(option)
                 target.selected, target.edited = len(target.options) - 1, None
                 _apply_change(fresh, step_name, before)
 
-            return store.mutate_run(run_id, add)
+            store.mutate_run(run_id, add)
 
-        if not body.pods:
-            raise HTTPException(400, "카피 수정 요청에는 고칠 Pod(pods)가 필요합니다.")
-        # 이미 직접 고친 수정본이 있으면 그 위에 고친다
-        base = slot.edited if slot.selected == body.index and slot.edited else slot.options[body.index]
-        copy = CopyOption.model_validate(base.content)
-        unknown = set(body.pods) - {p.pod for p in copy.pods}
-        if unknown:
-            raise HTTPException(400, f"이 카피안에 없는 Pod입니다: {', '.join(sorted(unknown))}")
+        return _start_job(run_id, "revise", step_name, body.slot, work_image)
+
+    if not body.pods:
+        raise HTTPException(400, "카피 수정 요청에는 고칠 Pod(pods)가 필요합니다.")
+    # 이미 직접 고친 수정본이 있으면 그 위에 고친다
+    base = slot.edited if slot.selected == body.index and slot.edited else slot.options[body.index]
+    copy = CopyOption.model_validate(base.content)
+    unknown = set(body.pods) - {p.pod for p in copy.pods}
+    if unknown:
+        raise HTTPException(400, f"이 카피안에 없는 Pod입니다: {', '.join(sorted(unknown))}")
+
+    async def work_copy() -> None:
         try:
             revised = await step.revise_pods(run, copy, body.pods, request)
         except Exception as e:
             logger.exception("%s 수정 요청 실패", step_name)
-            raise HTTPException(502, f"수정 요청 처리에 실패했습니다: {e}") from e
+            raise JobFailed(f"수정 요청 처리에 실패했습니다: {e}") from e
         edited = step.make_option(run, body.slot, base.angle, revised)
 
         def apply(fresh: RunState) -> None:
             target = fresh.steps[step_name].slots.get(body.slot)
             if target is None or body.index >= len(target.options):
-                raise HTTPException(409, "수정하는 사이 카피안이 다시 생성되었습니다.")
+                raise JobFailed("수정하는 사이 카피안이 다시 생성되었습니다.")
             before = _snapshot(fresh)
             target.selected, target.edited = body.index, edited
             _apply_change(fresh, step_name, before)
 
-        return store.mutate_run(run_id, apply)
+        store.mutate_run(run_id, apply)
+
+    return _start_job(run_id, "revise", step_name, body.slot, work_copy)
 
 
 def _snapshot(run: RunState) -> dict[str, dict[str, str]]:

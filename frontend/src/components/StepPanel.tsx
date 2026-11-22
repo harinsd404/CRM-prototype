@@ -60,8 +60,10 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
   const activeRef = useRef(false); // 서버에서 생성·수정 요청이 도는 중
   const jobId = useRef(0);
   useLeaveWarning(busy !== null || queue.length > 0);
+  // 화면이 모르는 서버 작업 (새로고침하거나 다른 탭에서 시작한 생성). 끝날 때까지 다시 읽고 버튼을 잠근다
+  const serverJob = run.job && !run.job.error && run.job.step === step && busy === null ? run.job : null;
   // 이미지는 한 장씩 끝나는 대로 서버에 저장되므로, 생성 중에는 실행을 다시 읽어 끝난 이미지부터 보여준다
-  useRunPolling(step === "image" && busy !== null, run, onChange);
+  useRunPolling((step === "image" && busy !== null) || serverJob !== null, run, onChange);
 
   // 응답이 늦게 도착해도 더 최신 상태(예: 그 사이의 선택)를 되돌리지 않는다
   const latestRun = useRef(run);
@@ -180,7 +182,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
           {generatedCount > 0 && missingPods.length > 0 && (
             <button
               onClick={generateMissing}
-              disabled={locked || busy !== null}
+              disabled={locked || busy !== null || serverJob !== null}
               className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover active:bg-primary-pressed disabled:opacity-40"
             >
               {busy === "missing" ? <Spinner /> : <SparkleIcon />}
@@ -191,7 +193,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             // 처음 생성: 눈에 띄는 주요 버튼
             <button
               onClick={generateAll}
-              disabled={locked || busy !== null}
+              disabled={locked || busy !== null || serverJob !== null}
               className="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover active:bg-primary-pressed disabled:opacity-40"
             >
               {busy === "all" ? <Spinner /> : <SparkleIcon />}
@@ -201,7 +203,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             // 이미 안이 있으면: 덮어쓰는 동작이라 한 단계 낮춘 보조 버튼
             <button
               onClick={generateAll}
-              disabled={locked || busy !== null}
+              disabled={locked || busy !== null || serverJob !== null}
               className="flex items-center gap-1.5 rounded-lg border bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40"
             >
               {busy === "all" ? <Spinner /> : <RefreshIcon />}
@@ -212,6 +214,13 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
       </div>
 
       <StepGuide step={step} run={run} locked={locked} generatedCount={generatedCount} />
+      {serverJob && (
+        <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-primary-soft px-3 py-2 text-sm text-gray-700">
+          <Spinner className="h-4 w-4" />
+          서버에서 {serverJob.slot ? `'${serverJob.slot}' ` : ""}
+          {serverJob.kind === "revise" ? "수정 요청을 처리" : "생성"}하는 중입니다. 끝나면 자동으로 나타납니다.
+        </p>
+      )}
       {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
 
       {!locked &&
@@ -224,7 +233,7 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
             title={multiSlot ? `${i + 1}. ${slotName}` : null}
             slot={state.slots[slotName] ?? null}
             busy={busy}
-            generating={busy === slotName || progress?.pod === slotName}
+            generating={busy === slotName || progress?.pod === slotName || serverJob?.slot === slotName}
             queued={queue.filter((job) => job.slot === slotName)}
             onCancelQueued={(id) => setQueue(queueRef.current.filter((job) => job.id !== id))}
             onGenerate={

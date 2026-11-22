@@ -80,7 +80,7 @@ flowchart TD
 
 ```mermaid
 flowchart TB
-    U(["🟧 사용자 브라우저"]) -- "ptk-d2a.insert.team/park" --> CF["Cloudflare<br/>응답이 100초 넘으면 524"]
+    U(["🟧 사용자 브라우저"]) -- "ptk-d2a.insert.team/park" --> CF["Cloudflare<br/>응답이 100초 넘으면 524<br/>(생성·수정은 백그라운드 작업이라 바로 응답)"]
     CF -- "/park 경로 그대로 전달" --> APP
 
     subgraph LXC["LXC 1003 ptkorea-d2 (Proxmox insert25) · crm.service :7777"]

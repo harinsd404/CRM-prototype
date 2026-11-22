@@ -50,6 +50,30 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+const JOB_POLL_MS = 2000;
+const JOB_POLL_ERRORS = 10; // 이만큼 연달아 읽기에 실패하면(네트워크 끊김 등) 기다리기를 그만둔다
+
+/** 서버 작업(run.job)이 끝날 때까지 실행을 다시 읽는다. 성공하면 job이 사라진 실행을, 실패하면 job.error로 오류를 던진다.
+ * 생성은 서버에서 계속 돌므로 요청이 Cloudflare 100초 제한에 걸리지 않는다. 중간 결과(이미지 한 장씩)는 useRunPolling이 보여 준다. */
+export async function waitForJob(started: RunState): Promise<RunState> {
+  const job = started.job;
+  if (!job || job.error) return started;
+  let failures = 0;
+  for (;;) {
+    await new Promise((resolve) => window.setTimeout(resolve, JOB_POLL_MS));
+    let run: RunState;
+    try {
+      run = await request<RunState>(`/runs/${started.id}`);
+      failures = 0;
+    } catch (err) {
+      if (++failures >= JOB_POLL_ERRORS) throw err;
+      continue;
+    }
+    if (run.job?.id !== job.id) return run; // 끝남 (다음 작업이 이미 시작됐어도 이 작업은 끝난 것)
+    if (run.job.error) throw new Error(run.job.error);
+  }
+}
+
 function feedbackQuery(filter: FeedbackFilter) {
   const params = new URLSearchParams();
   if (filter.template === "none") params.set("no_template", "true");
@@ -144,16 +168,21 @@ export const api = {
       body: file,
     }),
 
-  // slot을 주면 그 슬롯(이미지 단계의 Pod 하나)만 다시 생성한다. feedback은 모든 안에 반영할 사람의 수정 요청
-  generate: (runId: string, step: StepName, slot?: string, feedback?: string) =>
-    request<RunState>(
-      `/runs/${runId}/steps/${step}/generate${slot ? `?slot=${encodeURIComponent(slot)}` : ""}`,
-      { method: "POST", body: JSON.stringify({ feedback: feedback ?? null }) },
+  // slot을 주면 그 슬롯(이미지 단계의 Pod 하나)만 다시 생성한다. feedback은 모든 안에 반영할 사람의 수정 요청.
+  // 서버는 작업만 시작하고 바로 응답하므로, 작업이 끝날 때까지 기다렸다가 끝난 실행을 돌려준다
+  generate: async (runId: string, step: StepName, slot?: string, feedback?: string) =>
+    waitForJob(
+      await request<RunState>(
+        `/runs/${runId}/steps/${step}/generate${slot ? `?slot=${encodeURIComponent(slot)}` : ""}`,
+        { method: "POST", body: JSON.stringify({ feedback: feedback ?? null }) },
+      ),
     ),
 
   // 고른 안의 일부를 요청대로 고친다. 이미지: 그 이미지를 고친 새 안 추가 / 카피: pods에 적은 Pod만(전체 가능) 다시 쓰기
-  revise: (runId: string, step: StepName, body: { slot: string; index: number; request: string; pods?: string[] }) =>
-    request<RunState>(`/runs/${runId}/steps/${step}/revise`, { method: "POST", body: JSON.stringify(body) }),
+  revise: async (runId: string, step: StepName, body: { slot: string; index: number; request: string; pods?: string[] }) =>
+    waitForJob(
+      await request<RunState>(`/runs/${runId}/steps/${step}/revise`, { method: "POST", body: JSON.stringify(body) }),
+    ),
 
   // edited의 형식은 백엔드가 단계별 스키마로 검증한다 (틀리면 422)
   select: (runId: string, step: StepName, slot: string, index: number, edited?: StepContents[StepName]) =>
