@@ -220,6 +220,7 @@ function CopyBody({ content, original }: { content: CopyContent; original: CopyC
                 </span>
                 <span className="rounded bg-gray-100 px-1.5 py-0.5">유형 {p.headline_type}</span>
                 <span className="rounded bg-gray-100 px-1.5 py-0.5">어미 {p.ending_order}</span>
+                {p.target_scene && <span className="rounded bg-primary-soft px-1.5 py-0.5">타겟 장면 {p.target_scene}</span>}
               </p>
               {/* 바뀐 Pod는 AI가 처음 쓴 문구를 접어 둔다 */}
               {changed && before && (

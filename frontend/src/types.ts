@@ -45,6 +45,7 @@ export interface CopyContent {
     headline_type: "a" | "b" | "c" | "d" | "e";
     body: string;
     ending_order: string;
+    target_scene?: string; // 바디카피에 넣은 타겟 사용 장면 (이 항목 전 실행에는 없음)
     factcheck: { expression: string; source: string }[];
   }[];
   rationale: string;

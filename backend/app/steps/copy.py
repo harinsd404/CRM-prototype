@@ -27,6 +27,10 @@ class PodCopy(BaseModel):
     headline_type: Literal["a", "b", "c", "d", "e"] = Field(description="헤드카피 구조 유형")
     body: str = Field(description=f"바디카피. 2~3문장, 공백 포함 합계 {BODY_MAX}자 이내")
     ending_order: str = Field(description="바디카피 어미 배열. 예: 죠→보세요→습니다")
+    target_scene: str = Field(
+        default="",
+        description="바디카피에 넣은 타겟 페르소나의 사용 장면 구절을 글자 그대로 (예: '등굣길 버스 안에서'). 장소·상황만",
+    )
     factcheck: list[FactCheck]
 
 
@@ -90,7 +94,9 @@ async def _shorten(copy: CopyOption, field: str, max_length: int, prompt: str, s
         if not long:
             return
         items = "\n".join(
-            f"- {p.pod} ({getattr(p, note)}): {getattr(p, field)}  ← 현재 {len(getattr(p, field))}자" for p in long
+            f"- {p.pod} ({getattr(p, note)}): {getattr(p, field)}  ← 현재 {len(getattr(p, field))}자"
+            + (f" / 남길 타겟 장면: {p.target_scene}" if field == "body" and p.target_scene else "")
+            for p in long
         )
         result = await invoke_structured(prompt, schema, {"items": items, "max_length": str(max_length)})
         returned = result.headlines if field == "headline" else result.bodies
@@ -98,7 +104,10 @@ async def _shorten(copy: CopyOption, field: str, max_length: int, prompt: str, s
         for p in long:
             old = getattr(p, field)
             new = shortened.get(p.pod)
-            if new and len(new) < len(old) and _keeps_facts(old, new, sentences=field == "body"):
+            # 바디에 있던 타겟 장면을 줄이면서 지웠으면 버린다 (페르소나 반영이 빠진다)
+            scene = _compact(p.target_scene)
+            keeps_scene = field != "body" or not scene or scene not in _compact(old) or scene in _compact(new)
+            if new and len(new) < len(old) and keeps_scene and _keeps_facts(old, new, sentences=field == "body"):
                 setattr(p, field, new)
 
 
@@ -134,6 +143,8 @@ def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) 
             warnings.append(f"[{p.pod}] 입력 스펙에 없는 근거: {', '.join(unsourced)}")
         if numbers := unsourced_numbers(f"{p.headline} {p.body}", sources.get(p.pod, "")):
             warnings.append(f"[{p.pod}] 입력 스펙에 없는 수치: {', '.join(numbers)}")
+        if not p.target_scene.strip() or _compact(p.target_scene) not in _compact(p.body):
+            warnings.append(f"[{p.pod}] 바디카피에 타겟 사용 장면이 없습니다")
 
     rules = pod_rules(len(plan_pods))
     types = Counter(p.headline_type for p in copy.pods)
@@ -243,6 +254,7 @@ class CopyStep(TextStep):
                     headline_type=_MOCK_TYPES[(i + index) % 5],
                     body=f"{spec[:40]}. 실제 생성에서는 이 자리에 바디카피가 들어갑니다.",
                     ending_order=_MOCK_ENDINGS[(i + index) % 5],
+                    target_scene="실제 생성",
                     factcheck=[FactCheck(expression=spec[:20], source=spec[:20])],
                 )
             )

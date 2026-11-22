@@ -51,7 +51,7 @@ class ImageBrief(BaseModel):
         default="portrait",
         description="제품을 세로로 두면 portrait, 가로로 두면 landscape. 상태에 방향이 정해져 있으면 그 방향",
     )
-    scene: str = Field(description="장소, 시간대")
+    scene: str = Field(description="타겟 페르소나의 일상 속 장소, 시간대")
     props: str = Field(description="소품 2~3개")
     screen_content: str = Field(description=f"화면 콘텐츠. 글자 없는 추상적 UI 설명. 뒷면이면 '{SCREEN_HIDDEN}'")
     person_hand: str = Field(description="인물/손 묘사 또는 '없음'")
@@ -260,6 +260,7 @@ class ImageStep(Step):
             "safe_zone_rule": safe_zone_rule,
             "headline": copy["headline"],
             "body": copy["body"],
+            "target_scene": copy.get("target_scene") or "(없음 — 타겟 페르소나의 일상에서 고름)",
             "device_noun": profile.device_noun,
             "usage": profile.usage.strip() or _DEFAULT_USAGE,
             "state_guide": state_guide(profile),
