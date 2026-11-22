@@ -297,7 +297,7 @@ ollama pull qwen3:8b
 | 파일 | 단계 |
 |---|---|
 | `backend/app/prompts/pod.md` | ① |
-| `backend/app/prompts/copy.md`, `copy_shorten.md`, `copy_shorten_body.md`, `copy_revise.md` | ② 생성 / 헤드카피 줄이기 / 바디카피 줄이기 / 수정 요청 |
+| `backend/app/prompts/copy.md`, `copy_tone_down.md`, `copy_shorten.md`, `copy_shorten_body.md`, `copy_revise.md` | ② 생성 / 과장 표현 보정 / 헤드카피 줄이기 / 바디카피 줄이기 / 수정 요청 |
 | `backend/app/prompts/image_brief.md` | ③ 연출안 |
 | `backend/app/prompts/image_model.md` | ③ 이미지 모델 프롬프트 (P2) |
 | `backend/app/templates/crm.html.j2` | ④ HTML 템플릿 (P3) |

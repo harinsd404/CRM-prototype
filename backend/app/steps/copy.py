@@ -61,6 +61,47 @@ class ShortenBodyResult(BaseModel):
     bodies: list[ShortBody]
 
 
+class ToneDownPod(BaseModel):
+    pod: str
+    headline: str
+    body: str
+
+
+class ToneDownResult(BaseModel):
+    pods: list[ToneDownPod]
+
+
+# 스펙에 같은 말이 없으면 쓸 수 없는 표현: 최상급·무결 주장·지속 시간·성능 정도·의료 효능.
+# (카피에서 찾을 정규식, 스펙에 이 중 하나가 있으면 근거가 있는 것으로 보는 어간)
+# 실측: 장면을 넣자 "배터리 걱정 없이", "지연 없이", "밤늦게까지 든든하게"처럼 스펙에 없는 결과가 따라 붙었다
+_CLAIMS: list[tuple[re.Pattern[str], tuple[str, ...]]] = [
+    (re.compile(p), stems)
+    for p, stems in [
+        (r"압도적\w*", ("압도",)),
+        (r"최고\w*", ("최고",)),
+        (r"최강\w*", ("최강",)),
+        (r"최상\w*", ("최상",)),
+        (r"완벽\w*", ("완벽",)),
+        (r"유일\w*", ("유일",)),
+        (r"(세계\s?)?최초", ("최초",)),
+        (r"가장(?!자리)", ("가장",)),
+        (r"역대\w*", ("역대",)),
+        (r"혁신적\w*|획기적\w*", ("혁신", "획기")),
+        (r"(끊김|끊임|버벅임|버벅거림|렉|딜레이|지연|막힘)\s?(없이|없는|없고|없어|없죠)", ("끊김", "끊임", "버벅", "렉", "딜레이", "지연", "막힘")),
+        (r"걱정\s?(없이|없는|없고|없어|없죠|을 덜|을 줄|이 사라)", ("걱정",)),
+        (r"하루\s?종일|온종일|밤새\w*|밤늦게까지|며칠", ("종일", "밤새", "밤늦", "며칠")),
+        (r"빠른|빠르게|빨라\w*|신속\w*|재빠\w*", ("빠르", "빠른", "신속", "속도")),
+        (r"매끄러\w*|매끄럽\w*", ("매끄",)),
+        (r"부드러\w*|부드럽\w*", ("부드",)),
+        (r"쾌적\w*", ("쾌적",)),
+        (r"강력\w*", ("강력",)),
+        (r"정밀\w*|정확\w*|꼼꼼\w*|철저\w*", ("정밀", "정확", "꼼꼼", "철저")),
+        (r"넉넉\w*|든든\w*", ("넉넉", "든든")),
+        (r"진단\w*|치료\w*|예방\w*", ("진단", "치료", "예방")),
+    ]
+]
+
+
 _NUMBER = re.compile(r"\d[\d,.]*\d|\d")
 
 
@@ -73,6 +114,18 @@ def unsourced_numbers(text: str, source: str) -> list[str]:
     """카피에 쓴 수치 중 입력 원문에 없는 것. factcheck에 적지 않은 수치도 잡는다."""
     allowed = numbers(source)
     return [n for n in dict.fromkeys(_NUMBER.findall(text)) if n.replace(",", "") not in allowed]
+
+
+def unsourced_claims(text: str, source: str) -> list[str]:
+    """카피 속 과장·성능 표현 중 스펙(source)에 근거 어간이 없는 것."""
+    allowed = _compact(source)
+    found: dict[str, None] = {}
+    for pattern, stems in _CLAIMS:
+        if any(stem in allowed for stem in stems):
+            continue
+        for match in pattern.finditer(text):
+            found[match.group(0).strip()] = None
+    return list(found)
 
 
 def _sentences(text: str) -> int:
@@ -111,6 +164,50 @@ async def _shorten(copy: CopyOption, field: str, max_length: int, prompt: str, s
                 setattr(p, field, new)
 
 
+async def tone_down_copy(copy: CopyOption, sources: dict[str, str]) -> None:
+    """스펙에 근거 없는 과장·성능 표현이 있는 Pod만 모델에게 그 표현을 빼거나 스펙 표현으로 바꾸게 한다.
+    수치·조건·타겟 장면을 빠뜨렸거나 표현이 줄지 않은 결과는 버리고, 남은 것은 check_copy가 경고로 남긴다."""
+    flagged = {
+        p.pod: claims for p in copy.pods if (claims := unsourced_claims(f"{p.headline} {p.body}", sources.get(p.pod, "")))
+    }
+    if not flagged:
+        return
+    items = "\n".join(
+        f"- {p.pod}\n  헤드: {p.headline}\n  바디: {p.body}\n  근거 없는 표현: {', '.join(flagged[p.pod])}"
+        f"\n  어미 배열: {p.ending_order}" + (f" / 남길 타겟 장면: {p.target_scene}" if p.target_scene else "")
+        + f"\n  이 Pod 스펙: {sources.get(p.pod, '')}"
+        for p in copy.pods
+        if p.pod in flagged
+    )
+    result = await invoke_structured(
+        "copy_tone_down", ToneDownResult, {"items": items, "headline_max": str(HEADLINE_MAX), "body_max": str(BODY_MAX)}
+    )
+    fixed = {item.pod: item for item in result.pods}
+    for p in copy.pods:
+        if p.pod not in flagged or not (new := fixed.get(p.pod)):
+            continue
+        headline, body = new.headline.strip(), new.body.strip()
+        source = sources.get(p.pod, "")
+        scene = _compact(p.target_scene)
+        if (
+            headline
+            and body
+            and len(unsourced_claims(f"{headline} {body}", source)) < len(flagged[p.pod])
+            and _keeps_facts(p.headline, headline, sentences=False)
+            and _keeps_facts(p.body, body, sentences=True)
+            and (not scene or scene not in _compact(p.body) or scene in _compact(body))
+            and len(headline) <= max(HEADLINE_MAX, len(p.headline))
+            and len(body) <= max(BODY_MAX, len(p.body))
+        ):
+            p.headline, p.body = headline, body
+
+
+async def polish_copy(copy: CopyOption, sources: dict[str, str]) -> None:
+    """생성·수정한 카피를 코드 규칙에 맞춘다: 과장 표현을 먼저 걷어낸 뒤(글이 길어질 수 있음) 글자 수를 줄인다."""
+    await tone_down_copy(copy, sources)
+    await shorten_copy(copy)
+
+
 async def shorten_copy(copy: CopyOption) -> None:
     """헤드카피(20자)와 바디카피(110자, 실측: 15개 중 8개가 넘음)를 따로 줄인다. 서로 다른 칸이라 동시에 돌린다."""
     await asyncio.gather(
@@ -143,6 +240,8 @@ def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) 
             warnings.append(f"[{p.pod}] 입력 스펙에 없는 근거: {', '.join(unsourced)}")
         if numbers := unsourced_numbers(f"{p.headline} {p.body}", sources.get(p.pod, "")):
             warnings.append(f"[{p.pod}] 입력 스펙에 없는 수치: {', '.join(numbers)}")
+        if claims := unsourced_claims(f"{p.headline} {p.body}", sources.get(p.pod, "")):
+            warnings.append(f"[{p.pod}] 스펙에 근거 없는 과장·성능 표현: {', '.join(claims)}")
         if not p.target_scene.strip() or _compact(p.target_scene) not in _compact(p.body):
             warnings.append(f"[{p.pod}] 바디카피에 타겟 사용 장면이 없습니다")
 
@@ -153,6 +252,11 @@ def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) 
     if overused := [t for t, n in types.items() if n > rules.max_same_headline_type]:
         warnings.append(f"같은 헤드카피 유형을 {rules.max_same_headline_type}회 넘게 썼습니다: {', '.join(overused)}")
     return warnings
+
+
+def copy_sources(run: RunState) -> dict[str, str]:
+    """Pod별로 카피가 인용해도 되는 입력 원문 (그 Pod의 스펙 + 제품명 + 컬러)."""
+    return {pod.name: f"{pod.spec} {run.input.product_name} {' '.join(run.input.color_list)}" for pod in run.input.pods}
 
 
 def copy_rule_vars(run: RunState) -> dict[str, str]:
@@ -203,7 +307,7 @@ class CopyStep(TextStep):
     ) -> CopyOption:
         copy = await super().generate_option(run, slot, context, angle, index)
         if settings.llm_provider != "mock":
-            await shorten_copy(copy)
+            await polish_copy(copy, copy_sources(run))
         return copy
 
     async def revise_pods(self, run: RunState, copy: CopyOption, pods: list[str], request: str) -> CopyOption:
@@ -234,13 +338,12 @@ class CopyStep(TextStep):
             if missing:
                 raise ValueError(f"모델이 일부 Pod를 돌려주지 않았습니다: {', '.join(missing)}")
             partial = CopyOption(pods=list(revised.values()), rationale="")
-            await shorten_copy(partial)
+            await polish_copy(partial, copy_sources(run))
             revised = {p.pod: p for p in partial.pods}
         return copy.model_copy(update={"pods": [revised.get(p.pod, p) for p in copy.pods]})
 
     def postprocess(self, run: RunState, slot: str, content: CopyOption) -> list[str]:
-        sources = {pod.name: f"{pod.spec} {run.input.product_name} {' '.join(run.input.color_list)}" for pod in run.input.pods}
-        return check_copy(content, [item["pod"] for item in self._plan(run)], sources)
+        return check_copy(content, [item["pod"] for item in self._plan(run)], copy_sources(run))
 
     def mock_option(self, run: RunState, slot: str, angle: str, index: int) -> CopyOption:
         pods = []
