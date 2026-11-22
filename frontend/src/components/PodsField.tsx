@@ -115,7 +115,7 @@ export default function PodsField({ rows, onChange, onReset }: Props) {
           <input
             value={row.visual}
             onChange={(e) => update(i, { visual: e.target.value })}
-            placeholder="이미지 기본 연출 (선택) — 예: 손목에 차고 달리는 장면"
+            placeholder="이미지 기본 연출 (선택) — 이 Pod에서 보여줄 제품 상태·동작. 예: 문을 열어 내부 수납을 보여 줌"
             className={fieldClass}
           />
         </div>

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api";
 import { useLeaveWarning, useRunPolling } from "../hooks";
 import {
@@ -25,6 +25,8 @@ interface Props {
   run: RunState;
   locked: boolean; // 앞 단계를 아직 고르지 않음
   onChange: (run: RunState) => void;
+  autoStart?: boolean; // 방금 만든 실행: 열리자마자 이 단계 안 생성을 시작한다 (① Pod)
+  onAutoStarted?: () => void;
 }
 
 // 진행 중인 작업 표시용 키: "all" = 단계 전체, 슬롯 이름 = 그 슬롯 생성·선택, `${슬롯}#${안}` = 이미지 한 장 수정
@@ -41,7 +43,7 @@ interface QueuedJob {
 
 /** 모든 단계 공통: 생성/재생성 → 슬롯마다 N개 카드 → 하나 선택 → 직접 수정 또는 AI에게 수정 요청.
  *  POD·카피 단계는 슬롯이 하나, 이미지 단계는 Pod마다 슬롯이 하나씩이다. */
-export default function StepPanel({ step, run, locked, onChange }: Props) {
+export default function StepPanel({ step, run, locked, onChange, autoStart, onAutoStarted }: Props) {
   const state = run.steps[step];
   const [busy, setBusy] = useState<BusyKey>(null);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +163,16 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
     else call("all", () => api.generate(run.id, step));
   };
   const generateMissing = () => generateEachPod("missing", missingPods);
+
+  // 시작하기 바로 뒤: '안 생성'을 한 번 더 누르지 않아도 ①을 만든다 (QA: 시작 뒤 아무 일도 안 일어나 보였다)
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!autoStart || autoStarted.current) return;
+    autoStarted.current = true;
+    onAutoStarted?.();
+    if (!locked && generatedCount === 0 && busy === null && !run.job) generateAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
   const busyLabel = progress ? `${progress.pod} 생성 중 (${progress.done + 1}/${progress.total})` : "생성 중";
 
   return (
@@ -179,7 +191,8 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {generatedCount > 0 && missingPods.length > 0 && (
+          {/* 전체 생성이 도는 동안에는 '남은 Pod 생성'을 숨긴다 (흐린 버튼이 진행 버튼 옆에 같이 떠서 헷갈렸다) */}
+          {generatedCount > 0 && missingPods.length > 0 && busy !== "all" && (
             <button
               onClick={generateMissing}
               disabled={locked || busy !== null || serverJob !== null}
@@ -222,6 +235,14 @@ export default function StepPanel({ step, run, locked, onChange }: Props) {
         </p>
       )}
       {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
+      {/* 카피·Pod는 3안이 한 번에 나와 30~60초 동안 빈 화면이었다: 이미지처럼 만드는 중 카드를 보여 준다 */}
+      {!multiSlot && busy === "all" && (
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          {Array.from({ length: 3 }, (_, i) => (
+            <PendingCard key={i} label={`${i + 1}안 쓰는 중 (${step === "copy" ? "30~60초" : "10~20초"})`} />
+          ))}
+        </div>
+      )}
 
       {!locked &&
         slotNames.map((slotName, i) => (
@@ -546,10 +567,10 @@ function SlotView({
 }
 
 /** 아직 만드는 중인 이미지 자리 */
-function PendingCard() {
+function PendingCard({ label = "생성 중" }: { label?: string }) {
   return (
     <div className="flex aspect-video items-center justify-center gap-1.5 rounded-xl border border-dashed bg-gray-50 text-sm text-gray-500">
-      <Spinner className="h-4 w-4" /> 생성 중
+      <Spinner className="h-4 w-4" /> {label}
     </div>
   );
 }

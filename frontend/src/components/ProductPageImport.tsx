@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { PageImportResult } from "../types";
 import { CheckIcon, Spinner } from "./icons";
@@ -9,14 +9,18 @@ interface Props {
   onPhotos: (names: string[]) => void; // 고른 사진을 올린 사진으로 가져온 뒤
   maxPhotos: number; // 한 번에 가져올 수 있는 사진 수 (새 제품 = AI 규칙 만들기 최대, 아니면 남은 추가 사진 칸)
   photoTarget: string; // 가져온 사진이 들어가는 곳 (안내 문구)
+  defaultOpen: boolean; // 새 제품을 처음 입력할 때는 펼쳐 둔다 (가장 빠른 시작 방법)
 }
 
 const inputClass = "w-full rounded-lg border bg-white p-2.5 text-sm";
 
 /** 삼성닷컴 제품 페이지 주소를 넣으면 제품명·컬러·Pod별 스펙을 AI가 정리하고, 제품 사진 후보를 보여 준다.
  * 바로 덮어쓰지 않고 미리 본 뒤 '입력에 채우기'로 넣는다. 사진은 사람이 골라서 가져온다. */
-export default function ProductPageImport({ podNames, onApply, onPhotos, maxPhotos, photoTarget }: Props) {
+export default function ProductPageImport({ podNames, onApply, onPhotos, maxPhotos, photoTarget, defaultOpen }: Props) {
+  const [open, setOpen] = useState(defaultOpen);
   const [url, setUrl] = useState("");
+  const [imported, setImported] = useState<string[]>([]); // 이미 가져온 후보 (같은 사진을 두 번 가져오지 않게)
+  const [zoom, setZoom] = useState<string | null>(null);
   const [result, setResult] = useState<PageImportResult | null>(null);
   const [applied, setApplied] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
@@ -30,6 +34,7 @@ export default function ProductPageImport({ podNames, onApply, onPhotos, maxPhot
     setResult(null);
     setApplied(false);
     setPicked([]);
+    setImported([]);
     setPhotoNote(null);
     try {
       setResult(await api.importProductPage({ url: url.trim(), pods: podNames }));
@@ -41,6 +46,7 @@ export default function ProductPageImport({ podNames, onApply, onPhotos, maxPhot
   };
 
   const toggle = (src: string) =>
+    !imported.includes(src) &&
     setPicked((prev) => (prev.includes(src) ? prev.filter((u) => u !== src) : prev.length < maxPhotos ? [...prev, src] : prev));
 
   const importPhotos = async () => {
@@ -49,6 +55,7 @@ export default function ProductPageImport({ podNames, onApply, onPhotos, maxPhot
     try {
       const images = await api.importPageImages(picked);
       onPhotos(images.map((image) => image.name));
+      setImported((prev) => [...prev, ...images.map((image) => image.source)]);
       setPhotoNote(`사진 ${images.length}장을 ${photoTarget}에 넣었습니다.`);
       setPicked([]);
     } catch (err) {
@@ -59,8 +66,21 @@ export default function ProductPageImport({ podNames, onApply, onPhotos, maxPhot
   };
 
   return (
-    <details className="rounded-lg border bg-gray-50 p-3" open={!!result}>
-      <summary className="cursor-pointer text-sm font-medium">삼성닷컴 제품 페이지에서 가져오기</summary>
+    <section className="rounded-lg border border-primary/40 bg-primary-soft/40 p-3">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 text-left text-sm font-semibold text-ink"
+      >
+        <span>
+          삼성닷컴 제품 페이지로 시작하기
+          <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-white">추천</span>
+          {!open && <span className="ml-2 text-xs font-normal text-gray-500">주소만 넣으면 제품명·컬러·스펙·사진 후보를 채웁니다</span>}
+        </span>
+        <span className="text-xs text-gray-500">{open ? "접기 ▲" : "펼치기 ▼"}</span>
+      </button>
+      {open && (
       <div className="mt-3 space-y-3">
         <p className="text-xs text-gray-500">
           제품 페이지 주소를 넣으면 제품 정보·스펙·구매 페이지를 읽어 제품명, 컬러, Pod별 스펙을 정리합니다
@@ -131,54 +151,92 @@ export default function ProductPageImport({ podNames, onApply, onPhotos, maxPhot
 
             {result.images.length > 0 && (
               <div className="space-y-2 border-t pt-3">
-                <p className="text-xs text-gray-600">
-                  제품 사진 후보 {result.images.length}장 — 글자·연출이 없는 제품 단독 컷(정면·뒷면·측면·펼친 모습)을 고르세요.
-                  최대 {maxPhotos}장, {photoTarget}에 들어갑니다.
-                </p>
-                <div className="grid max-h-80 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-gray-600">
+                    제품 사진 후보 {result.images.length}장 — 글자·연출 없이 제품만 있는 컷(정면·측면·뒷면, 문이나 덮개를 연 모습)을
+                    고르세요. 최대 {maxPhotos}장, {photoTarget}에 들어갑니다.
+                  </p>
+                  {/* 그리드가 길어서 가져오기 버튼을 위에 둔다 */}
+                  <button
+                    type="button"
+                    onClick={importPhotos}
+                    disabled={picked.length === 0 || !!busy || maxPhotos === 0}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-40"
+                  >
+                    {busy === "photos" && <Spinner />}
+                    {maxPhotos === 0 ? "더 넣을 사진 칸이 없습니다" : `고른 사진 ${picked.length}장 가져오기`}
+                  </button>
+                </div>
+                {photoNote && <p className="text-xs text-primary-pressed">{photoNote}</p>}
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
                   {result.images.map((image) => {
                     const on = picked.includes(image.url);
+                    const done = imported.includes(image.url);
                     return (
-                      <button
-                        type="button"
-                        key={image.url}
-                        onClick={() => toggle(image.url)}
-                        title={`${image.width}×${image.height}`}
-                        className={`relative aspect-square overflow-hidden rounded-md border-2 bg-white ${
-                          on ? "border-primary" : "border-transparent hover:border-gray-300"
-                        }`}
-                      >
-                        <img
-                          src={image.url}
-                          alt=""
-                          loading="lazy"
-                          referrerPolicy="no-referrer"
-                          className="h-full w-full object-contain"
-                        />
-                        {on && (
-                          <span className="absolute right-1 top-1 rounded-full bg-primary px-1.5 text-[10px] text-white">
-                            {picked.indexOf(image.url) + 1}
-                          </span>
-                        )}
-                      </button>
+                      <div key={image.url} className="group relative">
+                        <button
+                          type="button"
+                          onClick={() => toggle(image.url)}
+                          disabled={done}
+                          title={`${image.width}×${image.height}`}
+                          className={`relative block aspect-square w-full overflow-hidden rounded-md border-2 bg-white ${
+                            on ? "border-primary" : done ? "border-gray-200 opacity-50" : "border-transparent hover:border-gray-300"
+                          }`}
+                        >
+                          <img
+                            src={image.url}
+                            alt=""
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                            className="h-full w-full object-contain"
+                          />
+                          {on && (
+                            <span className="absolute right-1 top-1 rounded-full bg-primary px-1.5 text-[10px] text-white">
+                              {picked.indexOf(image.url) + 1}
+                            </span>
+                          )}
+                          {done && (
+                            <span className="absolute inset-x-0 bottom-0 bg-gray-900/70 py-0.5 text-center text-[11px] text-white">
+                              가져옴
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setZoom(image.url)}
+                          aria-label="크게 보기"
+                          className="absolute left-1 top-1 rounded bg-white/90 px-1.5 text-xs text-gray-700 shadow hover:bg-white"
+                        >
+                          ⤢
+                        </button>
+                      </div>
                     );
                   })}
                 </div>
-                {photoNote && <p className="text-xs text-gray-600">{photoNote}</p>}
-                <button
-                  type="button"
-                  onClick={importPhotos}
-                  disabled={picked.length === 0 || !!busy || maxPhotos === 0}
-                  className="flex items-center gap-1.5 rounded-lg border bg-white px-4 py-2 text-sm font-semibold hover:bg-gray-100 disabled:opacity-40"
-                >
-                  {busy === "photos" && <Spinner />}
-                  {maxPhotos === 0 ? "더 넣을 사진 칸이 없습니다" : `고른 사진 ${picked.length}장 가져오기`}
-                </button>
               </div>
             )}
           </div>
         )}
       </div>
-    </details>
+      )}
+      {zoom && <ZoomOverlay src={zoom} onClose={() => setZoom(null)} />}
+    </section>
+  );
+}
+
+/** 후보 사진 크게 보기. 바깥을 누르거나 Esc로 닫는다 */
+function ZoomOverlay({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    const close = (e: globalThis.KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [onClose]);
+  return (
+    <div role="dialog" aria-modal="true" onClick={onClose} className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+      <img src={src} alt="" referrerPolicy="no-referrer" className="max-h-full max-w-full rounded-lg bg-white object-contain" />
+      <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-full bg-white px-3 py-1 text-sm">
+        닫기 ✕
+      </button>
+    </div>
   );
 }

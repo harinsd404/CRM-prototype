@@ -146,6 +146,7 @@ function ChangedTag() {
 }
 
 function PodBody({ content, original }: { content: PodContent; original: PodContent | null }) {
+  const [fullReasons, setFullReasons] = useState(false); // 근거가 두 줄에서 잘려 비교하기 어려웠다 (QA)
   return (
     <>
       <p className="rounded-lg bg-gray-50 p-2.5 text-xs leading-relaxed text-gray-600">
@@ -179,13 +180,23 @@ function PodBody({ content, original }: { content: PodContent; original: PodCont
                   </span>
                 </p>
               )}
-              <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-gray-500" title={item.reason}>
+              <p className={`mt-1.5 text-xs leading-relaxed text-gray-500 ${fullReasons ? "" : "line-clamp-2"}`} title={item.reason}>
                 {item.reason}
               </p>
             </li>
           );
         })}
       </ol>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation(); // 카드 선택과 따로
+          setFullReasons(!fullReasons);
+        }}
+        className="text-xs text-gray-500 underline hover:text-gray-900"
+      >
+        {fullReasons ? "Pod별 근거 줄이기" : "Pod별 근거 전체 보기"}
+      </button>
       <Rationale label="이 순서로 구성한 이유" text={content.rationale} />
     </>
   );
@@ -259,7 +270,7 @@ function ImageBody({ content, title }: { content: ImageContent; title: string })
             e.stopPropagation();
             setZoomed(true);
           }}
-          className="absolute right-2 bottom-2 rounded-full bg-gray-900/70 px-2.5 py-1 text-xs text-white opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+          className="absolute right-2 bottom-2 rounded-full bg-gray-900/70 px-2.5 py-1 text-xs text-white hover:bg-gray-900"
         >
           ⤢ 크게 보기
         </button>

@@ -40,6 +40,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [autoStartRun, setAutoStartRun] = useState<string | null>(null); // 방금 만든 실행: ① 생성을 바로 시작
 
   useEffect(() => {
     setUnauthorizedHandler(() => setMe(null));
@@ -60,8 +61,12 @@ export default function App() {
         writeRunId(loaded.id);
         setRun(loaded);
         // 단계는 실행을 불러온 뒤에 그려지므로 주소의 #step-… 위치로 그때 이동한다
+        // 주소에 위치가 없으면 지금 진행 중인 단계로 간다 (QA: 이미지 생성 중인 실행을 열면 맨 위 ①부터 보였다)
         requestAnimationFrame(() => {
-          const target = window.location.hash && document.querySelector(window.location.hash);
+          const current = STEP_ORDER.find((step) => !isStepComplete(loaded, step));
+          const target =
+            (window.location.hash && document.querySelector(window.location.hash)) ||
+            (current && current !== STEP_ORDER[0] ? document.getElementById(`step-${current}`) : null);
           if (target) target.scrollIntoView({ behavior: "instant" });
           else scrollToTop();
         });
@@ -75,6 +80,7 @@ export default function App() {
 
   const startRun = (newRun: RunState) => {
     writeRunId(newRun.id);
+    setAutoStartRun(newRun.id);
     setRun(newRun);
     // 입력 폼 맨 아래의 '시작하기'에서 넘어오므로, 실행 화면은 맨 위(① Pod)부터 보여 준다
     requestAnimationFrame(scrollToTop);
@@ -187,7 +193,17 @@ export default function App() {
             {STEP_ORDER.map((step, i) => {
               const previous = STEP_ORDER[i - 1];
               const locked = previous !== undefined && !isStepComplete(run, previous);
-              return <StepPanel key={step} step={step} run={run} locked={locked} onChange={setRun} />;
+              return (
+                <StepPanel
+                  key={step}
+                  step={step}
+                  run={run}
+                  locked={locked}
+                  onChange={setRun}
+                  autoStart={i === 0 && autoStartRun === run.id}
+                  onAutoStarted={() => setAutoStartRun(null)}
+                />
+              );
             })}
 
             <HtmlPreview run={run} onChange={setRun} />

@@ -188,18 +188,27 @@ export default function InputForm({ initial, onCreated }: Props) {
   const usedPods = rows.filter((row) => row.enabled && row.name.trim());
   const canSubmit = podsValid(rows) && usedPods.some((row) => row.spec.trim());
 
+  // 시작에 필요한데 비어 있는 것 (화면 위에서 아래 순서). 버튼 옆에 늘 보여 주고, 누르면 첫 칸으로 데려간다.
+  // 브라우저 기본 검사(required)는 칸에 포커스만 가서 무엇이 문제인지 알기 어려웠다 (QA)
+  const missing: { label: string; id: string }[] = [
+    ...(fields.persona.trim() ? [] : [{ label: "타겟 페르소나", id: "field-persona" }]),
+    ...(fields.product_name.trim() ? [] : [{ label: "제품명", id: "field-product" }]),
+    ...(fields.colors.trim() ? [] : [{ label: "컬러 라인업", id: "field-colors" }]),
+    ...(canSubmit ? [] : [{ label: "Pod 스펙(체크한 Pod 중 하나 이상)", id: "field-pods" }]),
+    ...(newProduct ? [{ label: "제품 규칙 — 사진을 올리고 'AI로 제품 규칙 만들기'", id: "field-photos" }] : []),
+  ];
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!canSubmit) {
-      setError("Pod를 확인해 주세요. 체크한 Pod 중 하나 이상은 스펙이 있어야 합니다.");
-      return;
-    }
-    if (!fields.colors.trim()) {
-      setError("컬러 라인업을 하나 이상 입력해 주세요.");
-      return;
-    }
-    if (newProduct) {
-      setError("제품 사진을 올리고 'AI로 제품 규칙 만들기'를 먼저 눌러 주세요. Galaxy Z Fold라면 템플릿을 고르면 됩니다.");
+    if (missing.length > 0) {
+      setError(`시작하려면 먼저 채워 주세요: ${missing.map((m) => m.label).join(", ")}`);
+      const target = document.getElementById(missing[0].id);
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const field =
+        target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+          ? target
+          : target?.querySelector<HTMLElement>("input, textarea, select");
+      field?.focus({ preventScroll: true });
       return;
     }
     setBusy(true);
@@ -215,7 +224,7 @@ export default function InputForm({ initial, onCreated }: Props) {
   };
 
   return (
-    <form onSubmit={submit} className="space-y-5 rounded-xl border bg-white p-6">
+    <form onSubmit={submit} noValidate className="space-y-5 rounded-xl border bg-white p-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h2 className="font-semibold">입력 데이터</h2>
         <label className="block min-w-64">
@@ -236,7 +245,8 @@ export default function InputForm({ initial, onCreated }: Props) {
       </div>
       {!touched && (
         <p className="rounded-lg bg-primary-soft px-4 py-3 text-sm text-gray-700">
-          제품 템플릿을 고르면 제품명·컬러·Pod와 스펙이 채워집니다. 새 제품이면 템플릿 없이 입력하고, 아래 '제품 사진'에 사진을 올려 AI로 제품 규칙을 만드세요.
+          새 제품은 아래 <b>삼성닷컴 제품 페이지로 시작하기</b>에 주소를 넣으면 제품명·컬러·Pod 스펙과 사진 후보가 채워집니다.
+          이미 만든 제품이면 오른쪽 위 <b>제품 템플릿</b>을 고르세요.
         </p>
       )}
 
@@ -250,6 +260,7 @@ export default function InputForm({ initial, onCreated }: Props) {
             : MAX_EXTRA_PRODUCT_IMAGES - (fields.extra_product_images ?? []).length
         }
         photoTarget={newProduct ? "아래 '제품 사진'" : "추가 사진"}
+        defaultOpen={!touched && fields.template_id == null}
       />
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -272,6 +283,7 @@ export default function InputForm({ initial, onCreated }: Props) {
           타겟 페르소나 (관심사) <span className="text-danger">*</span>
         </span>
         <textarea
+          id="field-persona"
           value={fields.persona}
           onChange={(e) => set("persona", e.target.value)}
           rows={2}
@@ -285,18 +297,21 @@ export default function InputForm({ initial, onCreated }: Props) {
         <label className="block">
           <span className="text-sm font-medium">제품명 (공식 표기 — 영문명이 있으면 영문)</span>
           <input
+            id="field-product"
             value={fields.product_name}
             onChange={(e) => set("product_name", e.target.value)}
             required
             className={fieldClass}
           />
         </label>
-        <div className="md:col-span-2">
+        <div id="field-colors" className="md:col-span-2">
           <ColorLineupField value={fields.colors} onChange={(colors) => set("colors", colors)} photos={visiblePhotos} />
         </div>
       </div>
 
-      <PodsField rows={rows} onChange={setRows} onReset={template ? () => setRows(toRows(template)) : undefined} />
+      <div id="field-pods">
+        <PodsField rows={rows} onChange={setRows} onReset={template ? () => setRows(toRows(template)) : undefined} />
+      </div>
 
       <ProfileField
         profile={profile}
@@ -321,7 +336,7 @@ export default function InputForm({ initial, onCreated }: Props) {
       />
 
       {newProduct ? (
-        <fieldset className="space-y-2">
+        <fieldset id="field-photos" className="space-y-2">
           <legend className="text-sm font-medium">제품 사진 — ③ 이미지를 만들 때 제품 모양·색의 기준으로 함께 보냄</legend>
           <ProfileGenerator
             product={{
@@ -350,12 +365,18 @@ export default function InputForm({ initial, onCreated }: Props) {
       {error && <p className="text-sm text-danger">{error}</p>}
       <div className="flex items-center gap-3">
         <button
-          disabled={busy || !canSubmit}
-          className="rounded-lg bg-primary hover:bg-primary-hover active:bg-primary-pressed px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+          disabled={busy}
+          className={`rounded-lg px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-40 ${
+            missing.length > 0 ? "bg-gray-400 hover:bg-gray-500" : "bg-primary hover:bg-primary-hover active:bg-primary-pressed"
+          }`}
         >
           {busy ? "만드는 중…" : "시작하기"}
         </button>
-        <p className="text-xs text-gray-500">시작하면 ① Pod 순서 → ② 카피 → ③ 이미지 → ④ 시안 조립 순서로 진행합니다.</p>
+        <p className="text-xs text-gray-500">
+          {missing.length > 0
+            ? `아직 필요한 것: ${missing.map((m) => m.label).join(", ")}`
+            : "시작하면 ① Pod 순서를 바로 만들고, ② 카피 → ③ 이미지 → ④ 시안 조립 순서로 진행합니다."}
+        </p>
       </div>
     </form>
   );
