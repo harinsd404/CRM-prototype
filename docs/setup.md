@@ -233,6 +233,45 @@ curl http://localhost:8000/api/health
 
 ## 6. 그 밖의 실행 방법
 
+### 서버 배포·운영 (Proxmox LXC)
+
+배포 서버는 LXC 1003 `ptkorea-d2`의 `/opt/crm`이고, systemd 서비스 `crm`이 7777 포트로 띄운다.
+밖에서는 Cloudflare를 거쳐 `ptk-d2a.insert.team/park`로 연다 (구성도는 [flow.md](flow.md) 2절).
+`infra/deploy.sh` 하나가 패키지 설치 → `git pull` → `uv sync` → 프론트 빌드 → 서비스 등록·재시작 → 헬스 체크까지 한다.
+
+**처음 설치** (LXC 안, root)
+
+```bash
+git clone https://github.com/harinsd404/CRM-prototype.git /opt/crm
+BASE_PATH=/park bash /opt/crm/infra/deploy.sh   # BASE_PATH는 처음 한 번만 주면 backend/.env에 저장된다
+```
+
+처음에는 `.env.example`을 복사한 mock 모드다. 실제 생성을 하려면 `/opt/crm/backend/.env`를 4-2처럼 고치고 서비스를 다시 켠다.
+로그인 계정도 서버에서 따로 만든다: `cd /opt/crm/backend && uv run python scripts/add_user.py <아이디> <비밀번호>`
+
+**코드 갱신** (main에 push한 뒤)
+
+```bash
+bash /opt/crm/infra/deploy.sh
+```
+
+**서비스 다루기**
+
+```bash
+systemctl status crm            # 상태
+systemctl restart crm           # 다시 켜기 (.env·프롬프트를 고친 뒤)
+systemctl stop crm              # 끄기
+journalctl -u crm -f            # 로그 실시간
+journalctl -u crm -n 100        # 최근 로그 100줄
+curl -s http://localhost:7777/park/api/health   # 헬스 체크
+```
+
+- 백엔드가 프론트 빌드 결과(`frontend/dist`)까지 같이 내보내므로 서버에서는 `pnpm dev`를 띄우지 않는다. 프론트를 고쳤으면 `deploy.sh`를 다시 실행해 빌드한다.
+- Cloudflare는 응답이 100초를 넘으면 524로 끊는다. 로컬에서는 되는데 서버에서만 524가 나면 이 제한 때문이다.
+- "삼성닷컴 제품 페이지에서 가져오기"는 서버에서 `www.samsung.com`, `images.samsung.com`으로 나가는 접속이 필요하다. 서버에서 확인: `curl -sI https://www.samsung.com/sec/ | head -1`
+
+**포트를 바꿀 때**: `PORT=8080 bash /opt/crm/infra/deploy.sh`
+
 ### 시연 대비: 이미지 풀
 
 이미지 생성이 실패할 때를 대비해, 잘 나온 실행의 이미지를 풀에 저장해 두고 바로 전환할 수 있다.
@@ -290,6 +329,8 @@ pnpm build
 | 429 "생성 요청이 너무 많습니다" | 1분 상한. 표시된 초만큼 기다린다 |
 | 429 "오늘 이미지 생성 한도를 넘습니다" | `IMAGE_PROVIDER=pool`로 바꾸거나 `IMAGE_DAILY_LIMIT`을 올린다 |
 | 409 "이미 생성 중입니다" | 같은 실행에서 다른 생성이 진행 중. 끝난 뒤 다시 |
+| "삼성닷컴 페이지에서 가져오기"가 "페이지를 받지 못했습니다" | 주소가 제품 하나의 페이지인지 확인. 출시 직후 접속 대기열이 걸리면 잠시 뒤 다시. 서버에서 삼성닷컴으로 나가는 접속이 막혔을 수도 있다 (6절 서버 배포의 확인 명령) |
+| 서버(`crm`)가 안 뜬다 / 화면이 502 | `journalctl -u crm -n 50`으로 오류 확인. `.env` 오타나 GCP 인증이 흔한 원인 |
 | 최종 HTML 글꼴이 다르게 보임 | `assets/fonts/`에 폰트가 없다. 기능에는 영향 없음 |
 
 ## 8. 끄기

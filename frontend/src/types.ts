@@ -105,6 +105,34 @@ export interface PodInput {
   visual: string; // 이미지 기본 연출 방향
 }
 
+/** 삼성닷컴 제품 페이지에서 가져온 입력 데이터 (backend/app/steps/product_page.py PageImportResult) */
+export interface PagePod {
+  name: string;
+  key: string;
+  spec: string;
+}
+
+export interface PageImageCandidate {
+  url: string; // images.samsung.com 원본 주소
+  width: number;
+  height: number;
+}
+
+export interface PageImportResult {
+  base_url: string;
+  product_name: string;
+  colors: string; // 쉼표 구분
+  pods: PagePod[];
+  images: PageImageCandidate[];
+  warnings: string[];
+}
+
+export interface ImportedImage {
+  source: string;
+  name: string; // 올린 사진 이름
+  url: string;
+}
+
 export interface RunInput {
   template_id: number | null; // 불러온 템플릿 (없으면 직접 입력)
   target_id: string;

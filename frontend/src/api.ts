@@ -4,7 +4,9 @@ import type {
   FeedbackStatus,
   FeedbackStep,
   ImageCheck,
+  ImportedImage,
   Me,
+  PageImportResult,
   ProductImage,
   ProductProfile,
   ProfileResult,
@@ -120,6 +122,10 @@ export const api = {
 
   // 제품 프로필: 기본(Fold), 올린 사진으로 AI 생성
   defaultProfile: () => request<ProductProfile>("/profiles/default"),
+  importProductPage: (body: { url: string; pods: string[] }) =>
+    request<PageImportResult>("/product-pages/import", { method: "POST", body: JSON.stringify(body) }),
+  importPageImages: (urls: string[]) =>
+    request<ImportedImage[]>("/product-pages/images", { method: "POST", body: JSON.stringify({ urls }) }),
   generateProfile: (body: {
     product_name: string;
     colors: string;

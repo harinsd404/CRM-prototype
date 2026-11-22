@@ -589,6 +589,18 @@ API: `POST·GET /api/runs/{id}/feedback`(내 실행) · `GET /api/feedback?templ
 규격(키 형식, 상태가 가리키는 사진 자리)은 코드가 검사해 어기면 다시 생성한다. 사진마다 자리를 배정해 돌려주고(`product_images`, 남는 사진은 `extra_product_images`),
 Pod별 기본 연출(`pod_visuals`)과 사진이 부족하거나 흐린 점(`warnings`)도 함께 준다. 주 참조 사진이 없는 상태는 빼고 알린다.
 
+### 삼성닷컴 제품 페이지에서 가져오기
+
+입력 화면의 "삼성닷컴 제품 페이지에서 가져오기". `backend/app/steps/product_page.py`, 프롬프트 `prompts/product_page.md`.
+
+| API | 하는 일 |
+|---|---|
+| `POST /api/product-pages/import` (`{url, pods}`) | 주소를 따라가 제품 기본 경로를 정하고(모델 주소 `SM-…/`는 구매 페이지로 넘어감) 제품 정보(`/`)·스펙(`specs/`)·구매(`buy/`) 페이지를 받는다. 모든 페이지에 똑같이 있는 연속 6줄 이상(메뉴·팝업)을 지우고 글만 Vertex Gemini에 보내 `{product_name, colors, pods[{name, key, spec}]}`로 받는다. `pods`(지금 Pod 이름)를 주면 그 이름별로 스펙을 나누고, 없으면 4~6개를 제안한다. 스펙의 수치가 페이지 글에 없으면 `warnings`. 사진 후보 `images[{url, width, height}]`: `images.samsung.com` 이미지 중 아이콘·모바일용·띠 배너·긴 변 600px 미만을 뺀 것(구매 페이지 갤러리 먼저, 최대 60장) |
+| `POST /api/product-pages/images` (`{urls}`, 최대 10) | 고른 후보를 받아 올린 사진(`data/uploads`)으로 저장한다. 결과 `[{source, name, url}]`의 `name`은 직접 올린 사진과 똑같이 쓴다 |
+
+- 받는 주소는 `www.samsung.com`만, 리다이렉트는 `*.samsung.com`과 접속 대기열 `*.queue-it.net`만 따라간다 (서버가 대신 받는 주소라 SSRF 방지). 사진은 `images.samsung.com`만.
+- 화면은 바로 덮어쓰지 않는다: 미리 보고 "입력에 채우기"를 누르면 제품명·컬러를 바꾸고, 같은 이름의 Pod는 스펙만 바꾼다 (Pod가 없으면 새로 만든다). 가져온 사진은 새 제품이면 'AI로 제품 규칙 만들기' 사진으로, 템플릿을 쓰는 중이면 추가 사진으로 들어간다.
+
 ### 템플릿 메뉴 — 프로필 버전과 피드백 개선안
 
 헤더의 **템플릿** 메뉴에서 다룬다 (예전의 '고급 모드' 스위치는 없앴다. 권한 구분은 없다).

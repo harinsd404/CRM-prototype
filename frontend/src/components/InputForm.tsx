@@ -1,20 +1,23 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api } from "../api";
-import type {
-  Mood,
-  ProductProfile,
-  ProfileResult,
-  RunInput,
-  RunState,
-  Template,
-  TemplatePod,
-  TemplateSummary,
+import {
+  MAX_EXTRA_PRODUCT_IMAGES,
+  type Mood,
+  type PageImportResult,
+  type ProductProfile,
+  type ProfileResult,
+  type RunInput,
+  type RunState,
+  type Template,
+  type TemplatePod,
+  type TemplateSummary,
 } from "../types";
 import ColorLineupField from "./ColorLineupField";
 import PodsField, { podsValid } from "./PodsField";
 import ProductImagesField, { type VisiblePhoto } from "./ProductImagesField";
 import ProfileField from "./ProfileField";
-import ProfileGenerator from "./ProfileGenerator";
+import ProductPageImport from "./ProductPageImport";
+import ProfileGenerator, { MAX_PROFILE_IMAGES } from "./ProfileGenerator";
 
 interface Props {
   initial: RunInput | null; // 다시 시작하기·다른 페르소나로: 그 실행의 입력을 채워 둔다
@@ -149,6 +152,29 @@ export default function InputForm({ initial, onCreated }: Props) {
     );
   };
 
+  // 삼성닷컴 페이지에서 가져온 제품명·컬러·Pod 스펙을 채운다. 같은 이름의 Pod는 스펙만 바꾸고, Pod가 없으면 새로 만든다
+  const applyPage = (result: PageImportResult) => {
+    if (touched && !window.confirm("제품명·컬러와 같은 이름의 Pod 스펙을 페이지 내용으로 바꿉니다. 계속할까요?")) return;
+    setFields((prev) => ({
+      ...prev,
+      product_name: result.product_name || prev.product_name,
+      colors: result.colors || prev.colors,
+    }));
+    const specs = Object.fromEntries(result.pods.map((pod) => [pod.name, pod.spec]));
+    setRows((prev) =>
+      prev.length > 0
+        ? prev.map((row) => (specs[row.name.trim()] ? { ...row, spec: specs[row.name.trim()] } : row))
+        : result.pods.map((pod) => ({ name: pod.name, key: pod.key, spec: pod.spec, visual: "", enabled: true })),
+    );
+  };
+
+  // 페이지에서 가져온 사진: 새 제품이면 'AI로 제품 규칙 만들기' 사진으로, 아니면 추가 사진으로
+  const [pagePhotos, setPagePhotos] = useState<string[]>([]);
+  const addPagePhotos = (names: string[]) => {
+    if (newProduct) setPagePhotos((prev) => [...prev, ...names].slice(0, MAX_PROFILE_IMAGES));
+    else set("extra_product_images", [...(fields.extra_product_images ?? []), ...names].slice(0, MAX_EXTRA_PRODUCT_IMAGES));
+  };
+
   // AI 생성의 첫 후보: 지금 사진 칸에 있는 올린 사진들
   const [visiblePhotos, setVisiblePhotos] = useState<VisiblePhoto[]>([]);
   useEffect(() => {
@@ -213,6 +239,18 @@ export default function InputForm({ initial, onCreated }: Props) {
           제품 템플릿을 고르면 제품명·컬러·Pod와 스펙이 채워집니다. 새 제품이면 템플릿 없이 입력하고, 아래 '제품 사진'에 사진을 올려 AI로 제품 규칙을 만드세요.
         </p>
       )}
+
+      <ProductPageImport
+        podNames={rows.filter((row) => row.enabled && row.name.trim()).map((row) => row.name.trim())}
+        onApply={applyPage}
+        onPhotos={addPagePhotos}
+        maxPhotos={
+          newProduct
+            ? MAX_PROFILE_IMAGES - pagePhotos.length
+            : MAX_EXTRA_PRODUCT_IMAGES - (fields.extra_product_images ?? []).length
+        }
+        photoTarget={newProduct ? "아래 '제품 사진'" : "추가 사진"}
+      />
 
       <div className="grid gap-4 md:grid-cols-4">
         <label className="block">
@@ -291,7 +329,7 @@ export default function InputForm({ initial, onCreated }: Props) {
               colors: fields.colors,
               pods: usedPods.map((row) => ({ name: row.name.trim(), spec: row.spec })),
             }}
-            initialPhotos={[]}
+            initialPhotos={pagePhotos}
             onGenerated={applyGenerated}
             intro="제품 공식 사진을 자유롭게 올려 주세요 (정면·뒷면·측면·착용/사용 모습·컬러 라인업 등 여러 각도). AI가 사진마다 자리를 정하고, 이 제품에 맞는 제품 규칙(기기 묘사·제품 상태)을 씁니다. 만든 뒤에는 자리별로 사진을 바꾸거나 더 올릴 수 있습니다."
           />

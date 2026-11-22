@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { api, withBase } from "../api";
 import type { ProfileResult } from "../types";
 import { SparkleIcon, Spinner } from "./icons";
@@ -8,7 +8,7 @@ const ACCEPT = "image/png,image/jpeg,image/webp";
 
 interface Props {
   product: { product_name: string; colors: string; pods: { name: string; spec: string }[] };
-  initialPhotos: string[]; // 처음에 넣어 둘 올린 사진 이름
+  initialPhotos: string[]; // 처음에 넣어 둘 올린 사진 이름. 나중에 늘어나면(페이지에서 가져온 사진) 뒤에 더한다
   onGenerated: (result: ProfileResult) => void;
   onCancel?: () => void;
   intro: string;
@@ -21,6 +21,15 @@ export default function ProfileGenerator({ product, initialPhotos, onGenerated, 
   const [uploading, setUploading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 처음 본 이름만 더한다 (사용자가 ✕로 뺀 사진이 부모가 다시 그려질 때 되살아나지 않게)
+  const seen = useRef(new Set(initialPhotos));
+  useEffect(() => {
+    const fresh = initialPhotos.filter((name) => !seen.current.has(name));
+    if (fresh.length === 0) return;
+    fresh.forEach((name) => seen.current.add(name));
+    setPhotos((prev) => [...prev, ...fresh.filter((name) => !prev.includes(name))].slice(0, MAX_PROFILE_IMAGES));
+  }, [initialPhotos]);
 
   const add = async (e: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []).slice(0, MAX_PROFILE_IMAGES - photos.length);
