@@ -41,9 +41,14 @@ _USER_AGENT = (
 _MAX_REDIRECTS = 8
 _MAX_PAGE_BYTES = 8 * 1024 * 1024
 _MAX_IMAGE_BYTES = 10 * 1024 * 1024
-_PAGE_TEXT_LIMIT = {"": 30_000, "specs/": 30_000, "buy/": 8_000}  # LLM에 보낼 글자 수 (페이지별, 공통 부분을 뺀 뒤)
+# LLM에 보낼 글자 수 (공통 부분을 뺀 뒤). 스펙·구매 페이지를 먼저 이 한도까지 담고, 남은 예산을 제품 정보 페이지가 쓴다.
+# 실측: 버즈4 프로는 스펙 페이지가 화면에서 그려져 비어 있고(520자) 배터리 수치가 제품 정보 페이지 34,000자 뒤의 각주에
+# 있었다 — 페이지마다 고정 30,000자로 자르면 빠진다
+_TEXT_BUDGET = 80_000
+_PAGE_TEXT_LIMIT = {"specs/": 30_000, "buy/": 8_000}
 _CHROME_RUN = 6  # 이만큼 연속된 줄이 모든 페이지에 똑같이 있으면 사이트 공통 부분(메뉴·팝업)
 _MIN_PAGE_TEXT = 200
+_MIN_SPECS_TEXT = 2_000  # 이보다 짧으면 스펙 표가 없는 스펙 페이지 (버즈처럼 화면에서 그리는 경우)
 _HEAD_BYTES = 256 * 1024  # 사진 크기는 파일 앞부분(헤더)만 읽어 잰다
 _MAX_PROBE = 120  # 크기를 재 볼 이미지 수
 MAX_CANDIDATES = 60
@@ -213,9 +218,13 @@ async def fetch_pages(url: str) -> FetchedPages:
         if len(text) >= _MIN_PAGE_TEXT:  # 공통 부분을 빼고 남는 게 없으면 제품 내용이 없는 페이지
             texts[sub] = text
     # 스펙 페이지가 없으면(워치·가전 등) 구매 페이지에 스펙이 있으므로 더 많이 보낸다
-    for sub, text in texts.items():
-        limit = _PAGE_TEXT_LIMIT[sub] if sub != "buy/" or "specs/" in texts else _PAGE_TEXT_LIMIT["specs/"]
-        texts[sub] = text[:limit]
+    has_specs = len(texts.get("specs/", "")) >= _MIN_SPECS_TEXT
+    for sub in ("specs/", "buy/"):
+        if sub in texts:
+            limit = _PAGE_TEXT_LIMIT["specs/"] if sub == "buy/" and not has_specs else _PAGE_TEXT_LIMIT[sub]
+            texts[sub] = texts[sub][:limit]
+    if "" in texts:
+        texts[""] = texts[""][: _TEXT_BUDGET - sum(len(t) for s, t in texts.items() if s)]
     if not texts:
         raise PageError(
             "페이지를 받지 못했습니다. 주소가 맞는지 확인해 주세요. "
@@ -349,9 +358,9 @@ def _check(info: PageInfo, pages: FetchedPages, request: PageImportRequest) -> l
             warnings.append(f"페이지에서 스펙을 찾지 못한 Pod: {', '.join(empty)}")
     if long := [pod.name for pod in info.pods if pod.name not in request.pods and len(pod.name) > POD_NAME_MAX]:
         warnings.append(f"Pod 이름이 {POD_NAME_MAX}자를 넘어 시안 제목으로 길 수 있습니다: {', '.join(long)}")
-    if "specs/" not in pages.texts:
-        used = " · ".join(_PAGE_NAMES[sub] for sub in pages.texts)
-        warnings.append(f"스펙 페이지가 없어 {used}만 보고 정리했습니다. 수치를 한 번 더 확인해 주세요.")
+    if len(pages.texts.get("specs/", "")) < _MIN_SPECS_TEXT:  # 없거나, 화면에서 그려져 받아도 비어 있음
+        used = " · ".join(_PAGE_NAMES[sub] for sub in pages.texts if sub != "specs/")
+        warnings.append(f"스펙 페이지에서 스펙 표를 읽지 못해 {used}만 보고 정리했습니다. 수치를 한 번 더 확인해 주세요.")
     return warnings
 
 

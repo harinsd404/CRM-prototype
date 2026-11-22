@@ -98,6 +98,8 @@ _CLAIMS: list[tuple[re.Pattern[str], tuple[str, ...]]] = [
         (r"쾌적\w*", ("쾌적",)),
         (r"강력\w*", ("강력",)),
         (r"정밀\w*|정확\w*|꼼꼼\w*|철저\w*|면밀\w*|과학적\w*", ("정밀", "정확", "꼼꼼", "철저", "면밀", "과학")),
+        (r"끊기지 않\w*|끊어지지 않\w*", ("끊",)),
+        (r"안전하\w*|안전한|안심\w*", ("안전", "안심")),
         (r"넉넉\w*|든든\w*", ("넉넉", "든든")),
         (r"진단\w*|치료\w*|예방\w*", ("진단", "치료", "예방")),
     ]
@@ -116,6 +118,48 @@ def unsourced_numbers(text: str, source: str) -> list[str]:
     """카피에 쓴 수치 중 입력 원문에 없는 것. factcheck에 적지 않은 수치도 잡는다."""
     allowed = numbers(source)
     return [n for n in dict.fromkeys(_NUMBER.findall(text)) if n.replace(",", "") not in allowed]
+
+
+# 스펙에서 수치 앞에 붙은 조건을 알리는 말, 조건 단어에서 뺄 흔한 말, 단어 끝 조사
+_CONDITION_MARK = re.compile(r"사용 시|기준|함께|모델|\bON\b|\bOFF\b|켰을|껐을|경우")
+_CONDITION_GENERIC = {"최대", "최소", "약", "음악", "재생", "시간", "배터리", "용량", "사용", "시", "기준", "경우", "함께", "모델"}
+_PARTICLE = re.compile(r"(와|과|을|를|이|가|은|는|에|의|로|으로|에서)$")
+_SENTENCE = re.compile(r"[^.?!]+[.?!]?")
+
+
+def _conditions(number: str, source: str) -> list[set[str]]:
+    """스펙에서 이 수치가 나오는 곳마다, 바로 앞(쉼표·괄호 뒤부터)에 붙은 조건의 핵심 단어.
+    예: '음악 재생 최대 6시간(충전 케이스와 함께 사용 시 최대 26시간)'에서 26 → {충전, 케이스}.
+    조건 표시가 없는 곳은 빈 집합 (조건 없이 써도 됨)."""
+    found = []
+    for match in re.finditer(rf"(?<![\d.,]){re.escape(number)}(?![\d])", source):
+        start = max(source.rfind(sep, 0, match.start()) for sep in ",(\n;·")
+        window = source[start + 1 : match.start()]
+        if not _CONDITION_MARK.search(window):
+            found.append(set())
+            continue
+        words = {_PARTICLE.sub("", w) for w in re.findall(r"[\w-]+", window)}
+        found.append({w for w in words if len(w) >= 2 and w not in _CONDITION_GENERIC} or set())
+    return found
+
+
+def missing_conditions(headline: str, body: str, source: str) -> list[str]:
+    """조건이 붙은 수치를 조건 없이(또는 다른 조건으로) 쓴 곳. 실측: 스펙이 '최대 6시간(충전 케이스와 함께 사용 시
+    최대 26시간)'인데 'ANC ON 기준 최대 26시간 음악을 들어보세요' — 케이스 조건이 빠지고 단독 조건이 붙었다.
+    바디는 그 수치가 있는 문장에, 헤드카피는 짧으므로 바디 어딘가에 조건 단어가 있어야 한다."""
+    out: dict[str, None] = {}
+    targets = [(headline, f"{headline} {body}")] + [(s, s) for s in _SENTENCE.findall(body)]
+    for text, scope in targets:
+        for number in dict.fromkeys(_NUMBER.findall(text)):
+            conditions = _conditions(number, source)
+            if conditions and not any(not words or any(w in scope for w in words) for words in conditions):
+                out[f"{number} (스펙 조건: {' '.join(sorted(conditions[0]))})"] = None
+    return list(out)
+
+
+def copy_issues(headline: str, body: str, source: str) -> list[str]:
+    """자동 보정·경고 대상: 근거 없는 과장 표현 + 조건이 빠진 수치."""
+    return unsourced_claims(f"{headline} {body}", source) + [f"조건 누락 {m}" for m in missing_conditions(headline, body, source)]
 
 
 def unsourced_claims(text: str, source: str) -> list[str]:
@@ -169,13 +213,11 @@ async def _shorten(copy: CopyOption, field: str, max_length: int, prompt: str, s
 async def tone_down_copy(copy: CopyOption, sources: dict[str, str]) -> None:
     """스펙에 근거 없는 과장·성능 표현이 있는 Pod만 모델에게 그 표현을 빼거나 스펙 표현으로 바꾸게 한다.
     수치·조건·타겟 장면을 빠뜨렸거나 표현이 줄지 않은 결과는 버리고, 남은 것은 check_copy가 경고로 남긴다."""
-    flagged = {
-        p.pod: claims for p in copy.pods if (claims := unsourced_claims(f"{p.headline} {p.body}", sources.get(p.pod, "")))
-    }
+    flagged = {p.pod: issues for p in copy.pods if (issues := copy_issues(p.headline, p.body, sources.get(p.pod, "")))}
     if not flagged:
         return
     items = "\n".join(
-        f"- {p.pod}\n  헤드: {p.headline}\n  바디: {p.body}\n  근거 없는 표현: {', '.join(flagged[p.pod])}"
+        f"- {p.pod}\n  헤드: {p.headline}\n  바디: {p.body}\n  고칠 것: {', '.join(flagged[p.pod])}"
         f"\n  어미 배열: {p.ending_order}" + (f" / 남길 타겟 장면: {p.target_scene}" if p.target_scene else "")
         + f"\n  이 Pod 스펙: {sources.get(p.pod, '')}"
         for p in copy.pods
@@ -194,7 +236,7 @@ async def tone_down_copy(copy: CopyOption, sources: dict[str, str]) -> None:
         if (
             headline
             and body
-            and len(unsourced_claims(f"{headline} {body}", source)) < len(flagged[p.pod])
+            and len(copy_issues(headline, body, source)) < len(flagged[p.pod])
             and _keeps_facts(p.headline, headline, sentences=False)
             and _keeps_facts(p.body, body, sentences=True)
             and (not scene or scene not in _compact(p.body) or scene in _compact(body))
@@ -246,6 +288,8 @@ def check_copy(copy: CopyOption, plan_pods: list[str], sources: dict[str, str]) 
             warnings.append(f"[{p.pod}] 입력 스펙에 없는 수치: {', '.join(numbers)}")
         if claims := unsourced_claims(f"{p.headline} {p.body}", sources.get(p.pod, "")):
             warnings.append(f"[{p.pod}] 스펙에 근거 없는 과장·성능 표현: {', '.join(claims)}")
+        if missing := missing_conditions(p.headline, p.body, sources.get(p.pod, "")):
+            warnings.append(f"[{p.pod}] 조건 없이 쓴 수치: {', '.join(missing)}")
         if not p.target_scene.strip() or _compact(p.target_scene) not in _compact(p.body):
             warnings.append(f"[{p.pod}] 바디카피에 타겟 사용 장면이 없습니다")
 

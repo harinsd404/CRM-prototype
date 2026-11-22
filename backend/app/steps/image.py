@@ -209,8 +209,13 @@ def reference_images(run: RunState, brief: ImageBrief) -> list[Reference]:
     if (product := _find_reference(folder, main)) is None:
         return []
     stems = [*extra]
-    if profile.color_slot and profile.reference_color not in brief.color and profile.color_slot not in stems:
-        stems.append(profile.color_slot)
+    if profile.reference_color not in brief.color:
+        # 컬러별 사진 자리(라벨에 컬러 이름, 예: '핑크 골드 컬러 라인업')가 있으면 그 사진을, 없으면 컬러 라인업 자리를 보낸다.
+        # 실측: 버즈4 프로는 블랙·핑크 골드 사진이 따로 있는데 color_slot은 하나라 핑크 골드 장면에도 블랙 사진이 갔다
+        color_name = strip_hex(brief.color).strip()
+        by_color = next((s.key for s in profile.photo_slots if color_name and color_name in s.label), None)
+        if (slot_key := by_color or profile.color_slot) and slot_key not in stems:
+            stems.append(slot_key)
     found = [Reference(product, captions[main])]
     found += [Reference(path, captions[stem]) for stem in stems if (path := _find_reference(folder, stem))]
     # 입력 화면에서 더 올린 제품 사진 (extra_1, extra_2 … 순서)
