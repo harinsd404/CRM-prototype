@@ -48,6 +48,21 @@ _DEFAULT_PERSON_RULES = (
 # 인물 묘사에 쓰면 얼굴이 화면에 들어오는 말 (face hidden 위반). "눈높이"(카메라 각도)·"눈이 내리는"·"코트" 같은 말은 걸리지 않게 좁게 잡는다
 _FACE_WORDS = re.compile(r"얼굴|옆모습|표정|미소|웃는|입가|입술|입 ?(가까이|근처|앞|쪽|높이)|눈(을|빛|썹)|시선|콧|코끝|턱(을|이|선| 아래| 근처)?|머리를 숙|고개")
 _PERSON_TYPES = ("Hand-held", "인물 포함")
+
+# 무드별 장면의 빛·시간대. 이미지 모델의 mood 블록(image_model.md)과 같은 방향으로 연출안 단계에서 맞춘다.
+# 실측: HOT인데 연출안이 "맑고 화창한 낮", "늦은 오후 햇살"을 써서 5장 중 4장이 따뜻한 햇살 사진(WARM)이 됐다
+MOOD_GUIDES = {
+    "HOT": "저녁·밤, 또는 빛을 줄인 실내. 배경에 네온 보라·전기 파랑 포인트 조명, 깊은 그림자와 강한 대비. "
+    "한낮 햇살·노을 같은 따뜻한 자연광 장면은 쓰지 않습니다.",
+    "WARM": "낮의 부드러운 자연광(창가 햇살, 오후 빛). 크림·파스텔 톤 공간, 은은한 그림자. 네온·어두운 장면은 쓰지 않습니다.",
+    "COLD": "흐린 날이나 확산광의 밝고 고른 빛. 흰색·회색·차콜의 정돈된 공간, 그림자 거의 없음. 따뜻한 햇살·네온은 쓰지 않습니다.",
+}
+# 무드와 맞지 않는 빛을 쓴 연출안을 찾는 말 (경고용)
+_MOOD_CLASH = {
+    "HOT": re.compile(r"한낮|대낮|화창|햇살|햇빛|태양광|노을|해질녘|오전|아침 햇"),
+    "WARM": re.compile(r"네온|한밤|자정|어두운"),
+    "COLD": re.compile(r"네온|노을|해질녘|황금빛|따뜻한 햇"),
+}
 _FACE_CHECK_SIDE = 768  # 얼굴 판정용으로 줄여 보내는 크기
 
 # L3 Safe Zone 설명에 쓰면 이미지에 단색 띠가 생기는 단어 (원본 P1 Safe Zone Rules)
@@ -159,8 +174,10 @@ def normalize_brief(brief: ImageBrief, layout: str, profile: ProductProfile) -> 
     brief.color = strip_hex(brief.color)  # 헥스는 코드가 입력에서 찾아 붙인다
 
 
-def check_brief(brief: ImageBrief, layout: str, colors: list[str]) -> list[str]:
+def check_brief(brief: ImageBrief, layout: str, colors: list[str], mood: str | None = None) -> list[str]:
     warnings = []
+    if mood in _MOOD_CLASH and (clash := _MOOD_CLASH[mood].findall(brief.scene)):
+        warnings.append(f"무드 {mood}와 맞지 않는 빛의 장면입니다: {', '.join(dict.fromkeys(clash))}")
     if colors and brief.color not in colors:
         warnings.append(f"제품 컬러 '{brief.color}'가 입력 컬러 라인업에 없습니다.")
     if layout == "L3" and (words := [w for w in _SAFE_ZONE_BANNED if w in brief.safe_zone]):
@@ -328,7 +345,28 @@ class ImageStep(Step):
             "usage": profile.usage.strip() or _DEFAULT_USAGE,
             "state_guide": state_guide(profile),
             "visual_guide": profile.guide("visual"),
+            "mood": run.input.mood,
+            "mood_guide": MOOD_GUIDES[run.input.mood],
+            "other_pods": self._other_pods(run, slot),
         }
+
+    def _other_pods(self, run: RunState, slot: str) -> str:
+        """다른 Pod에서 이미 쓴 장면·컬러 (Pod를 차례로 만들 때 겹치지 않게). 고른 안이 있으면 그것만, 없으면 만든 안 전부."""
+        lines: list[str] = []
+        colors: list[str] = []
+        for pod, state in run.steps["image"].slots.items():
+            if pod == slot or not state.options:
+                continue
+            chosen = [state.selected_option] if state.selected_option else state.options
+            for option in chosen:
+                brief = option.content.get("brief", {})
+                lines.append(f"- {pod}: {brief.get('scene', '')} / {brief.get('image_type', '')} / {brief.get('color', '')}")
+                colors.append(brief.get("color", ""))
+        if not lines:
+            return "(아직 없음)"
+        unused = [c for c in run.input.color_list if c not in colors]
+        hint = f"\n아직 쓰지 않은 컬러: {', '.join(unused)}" if unused else ""
+        return "\n".join(lines) + hint
 
     async def generate_slot(
         self, run: RunState, slot: str, feedback: str | None = None, on_option: OnOption | None = None
@@ -428,7 +466,7 @@ class ImageStep(Step):
     def postprocess(self, run: RunState, slot: str, content: ImageOption) -> list[str]:
         layout = self._plan_item(run, slot)["layout"]
         normalize_brief(content.brief, layout, run.input.product_profile)
-        warnings = check_brief(content.brief, layout, run.input.color_list)
+        warnings = check_brief(content.brief, layout, run.input.color_list, run.input.mood)
         if content.face_visible:
             warnings.append("이미지에 얼굴이 보입니다 (AI 판정). 이 안을 쓰려면 '수정 요청'으로 얼굴을 잘라 주세요.")
         return warnings

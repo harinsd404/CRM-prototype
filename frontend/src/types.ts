@@ -93,6 +93,7 @@ export interface SlotState<S extends StepName> {
   edited: Option<S> | null;
   pending: number; // 아직 만드는 중인 안의 수 (이미지는 한 장씩 끝나는 대로 options에 붙는다)
   stale: string[]; // 이 안들을 만든 뒤 앞 단계에서 바뀐 점 (이미지 단계). 다시 생성하면 비워진다
+  failures?: string[]; // 끝내 실패한 안의 이유 (이번 생성). 다시 생성하면 비워진다
 }
 
 export interface StepState<S extends StepName> {

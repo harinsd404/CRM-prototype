@@ -166,6 +166,8 @@ class SlotState(BaseModel):
     pending: int = 0  # 아직 만드는 중인 안의 수. 이미지는 한 장씩 끝나는 대로 options에 붙는다
     # 이 안들을 만든 뒤 앞 단계에서 바뀐 점 (예: 이미지를 만든 뒤 그 Pod의 카피를 고침). 다시 생성하면 비워진다
     stale: list[str] = []
+    # 끝내 실패한 안의 이유 (이번 생성에서). 화면에 "1개 안 실패: 이미지 모델 사용량 초과"처럼 보여 준다. 다시 생성하면 비워진다
+    failures: list[str] = []
 
     @property
     def selected_option(self) -> Option | None:

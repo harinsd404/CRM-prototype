@@ -496,6 +496,16 @@ function SlotView({
             Array.from({ length: slot.pending }, (_, i) => <PendingCard key={`pending-${i}`} />)}
         </div>
       )}
+      {slot?.failures && slot.failures.length > 0 && (
+        <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <p className="font-medium">{slot.failures.length}개 안을 만들지 못했습니다</p>
+          <ul className="mt-1 list-disc pl-4">
+            {slot.failures.map((failure) => (
+              <li key={failure}>{failure}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {slot?.selected != null && step === "copy" && (
         <CopyReviseBox

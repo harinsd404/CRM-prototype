@@ -16,8 +16,20 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# 안 하나가 끝날 때마다 부른다 (슬롯 이름, 만든 안 또는 끝내 실패하면 None)
-OnOption = Callable[[str, Option | None], None]
+# 안 하나가 끝날 때마다 부른다 (슬롯 이름, 만든 안 또는 끝내 실패하면 None, 실패 이유)
+OnOption = Callable[[str, Option | None, str | None], None]
+
+
+def failure_reason(error: BaseException) -> str:
+    """끝내 실패한 안의 이유를 사람이 읽을 말로. 원인별로 할 일이 달라서 나눈다 (기다리기 / 연출 바꾸기 / 사진 넣기)."""
+    text = str(error)
+    if isinstance(error, TimeoutError | asyncio.TimeoutError):
+        return "응답 시간 초과 (모델이 오래 응답하지 않음)"
+    if "429" in text or "RESOURCE_EXHAUSTED" in text:
+        return "모델 사용량 초과(429) — 잠시 뒤 다시 생성"
+    if "이미지가 생성되지 않았습니다" in text:
+        return f"{text[:150]} (안전 필터나 연출 문제일 수 있음)"
+    return text[:200] or type(error).__name__
 
 GENERATE_ATTEMPTS = 3
 RETRY_BACKOFF = 5  # 초. 두 번째 시도는 5초, 세 번째는 10초 뒤
@@ -93,23 +105,26 @@ class Step(ABC):
         """(안 이름, 안 하나를 만드는 함수) 목록을 병렬로 돌려 끝나는 대로 on_option에 알린다.
         일부 안만 실패하면 성공한 안으로 보여주고, 모두 실패했을 때만 단계 실패."""
         done: list[Option] = []  # 끝난 순서대로. 화면에 먼저 나온 안의 순서가 끝까지 유지된다
+        failures: list[str] = []
 
         async def one(index: int, label: str, make: Callable[[], Awaitable[BaseModel]]) -> None:
             try:
                 content = await self.with_retry(make, f"{slot} 안 {index + 1}")
-            except Exception:
+            except Exception as e:
+                failures.append(f"안 {index + 1}: {failure_reason(e)}")
+                logger.warning("%s/%s 안 %d 끝내 실패: %s", self.name, slot, index + 1, failures[-1])
                 if on_option:
-                    on_option(slot, None)
+                    on_option(slot, None, failures[-1])
                 raise
             option = self.make_option(run, slot, label, content)
             done.append(option)
             if on_option:
-                on_option(slot, option)
+                on_option(slot, option, None)
 
         results = await asyncio.gather(*(one(i, label, make) for i, (label, make) in enumerate(jobs)), return_exceptions=True)
         if not done:
             raise next(r for r in results if isinstance(r, BaseException))
-        return SlotState(options=done)
+        return SlotState(options=done, failures=failures)
 
     async def with_retry(self, make: Callable[[], Awaitable[T]], what: str) -> T:
         """모델 응답이 가끔 스키마를 어기거나 일시 오류가 나므로, 실패하면 그 호출만 다시 시도한다."""

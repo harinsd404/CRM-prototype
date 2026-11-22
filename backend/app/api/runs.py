@@ -238,7 +238,7 @@ async def _generate_images(step: Step, run: RunState, slots: list[str], feedback
 
     store.mutate_run(run.id, start)
 
-    def on_option(slot: str, option: Option | None) -> None:
+    def on_option(slot: str, option: Option | None, failure: str | None) -> None:
         def add(fresh: RunState) -> None:
             current = fresh.steps["image"].slots.get(slot)
             if current is None:
@@ -246,6 +246,8 @@ async def _generate_images(step: Step, run: RunState, slots: list[str], feedback
             current.pending = max(0, current.pending - 1)
             if option is not None:
                 current.options.append(option)
+            if failure:
+                current.failures.append(failure)
 
         store.mutate_run(run.id, add)
 
