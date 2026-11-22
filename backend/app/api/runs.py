@@ -261,8 +261,14 @@ def _start_job(
 
     async def runner() -> None:
         error: str | None = None
+        cancelled = False
         try:
             await work()
+        except asyncio.CancelledError:
+            # 서버 종료(systemctl restart, 개발 중 --reload)로 작업이 취소됨. CancelledError는 Exception이 아니라
+            # 그냥 두면 오류 없이 끝난 것으로 저장돼 화면이 성공으로 보고, 만드는 중 표시(pending)가 영원히 남았다
+            cancelled = True
+            error = store.JOB_INTERRUPTED
         except JobFailed as e:
             error = str(e)
         except HTTPException as e:
@@ -274,11 +280,17 @@ def _start_job(
             def end(fresh: RunState) -> None:
                 if fresh.job and fresh.job.id == job.id:
                     fresh.job = job.model_copy(update={"error": error}) if error else None
+                if cancelled:
+                    for step_state in fresh.steps.values():
+                        for slot_state in step_state.slots.values():
+                            slot_state.pending = 0
 
             try:
                 store.mutate_run(run_id, end)
             finally:
                 guard.unlock_run(run_id)
+        if cancelled:
+            raise asyncio.CancelledError
 
     task = asyncio.create_task(runner())
     _jobs.add(task)
@@ -317,8 +329,9 @@ def _start_image_job(step: Step, run: RunState, slots: list[str], feedback: str 
     async def work() -> None:
         try:
             await step.generate(run, slots, feedback, on_option)
-        except Exception as e:
-            logger.exception("image 단계 생성 실패")
+        except BaseException as e:  # 취소(서버 종료)도 원래 안으로 되돌린다
+            if not isinstance(e, asyncio.CancelledError):
+                logger.exception("image 단계 생성 실패")
 
             def restore(fresh: RunState) -> None:
                 state = fresh.steps["image"]
@@ -330,6 +343,8 @@ def _start_image_job(step: Step, run: RunState, slots: list[str], feedback: str 
                         state.slots[s] = old
 
             store.mutate_run(run.id, restore)
+            if isinstance(e, asyncio.CancelledError):
+                raise
             raise JobFailed(f"'image' 생성에 실패했습니다: {e}") from e
 
         # 안은 끝나는 대로 이미 붙었다 (collect_options가 돌려주는 순서와 같다). 남은 표시만 정리한다

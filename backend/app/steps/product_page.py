@@ -64,6 +64,10 @@ _SKIP_IMAGE = re.compile(
 )
 
 
+# 모델 코드 모양 (RS84DG5602M9, SM-F971NLVPKOO): 영문 대문자로 시작해 숫자가 섞인 한 단어. QA: 냉장고 제품명이 이것으로 왔다
+MODEL_CODE = re.compile(r"^[A-Z]{1,4}(-[A-Z]{0,2})?[0-9][A-Z0-9-]{4,}$")
+
+
 class PageError(ValueError):
     """사용자에게 그대로 보여 줄 수 있는 오류 (잘못된 주소, 페이지를 받을 수 없음)."""
 
@@ -296,7 +300,7 @@ class PagePod(BaseModel):
 
 
 class PageInfo(BaseModel):
-    product_name: str = Field(description="영문 공식 제품명 (예: Galaxy Z Fold8)")
+    product_name: str = Field(description="공식 제품명. 영문명이 있으면 영문(Galaxy Z Fold8), 없으면 한국어(양문형 냉장고 846L). 모델 코드 금지")
     colors: list[str] = Field(description="이 모델의 컬러 이름, 페이지 표기 그대로 (한국어)")
     pods: list[PagePod]
     warnings: list[str] = Field(default=[], description="한국어. 페이지에서 찾지 못한 것, 헷갈린 것")
@@ -358,6 +362,8 @@ def _check(info: PageInfo, pages: FetchedPages, request: PageImportRequest) -> l
             warnings.append(f"페이지에서 스펙을 찾지 못한 Pod: {', '.join(empty)}")
     if long := [pod.name for pod in info.pods if pod.name not in request.pods and len(pod.name) > POD_NAME_MAX]:
         warnings.append(f"Pod 이름이 {POD_NAME_MAX}자를 넘어 시안 제목으로 길 수 있습니다: {', '.join(long)}")
+    if MODEL_CODE.match(info.product_name.strip()):
+        warnings.append(f"제품명이 모델 코드({info.product_name.strip()})로 보입니다. 카피·시안 제목에 그대로 쓰이니 공식 제품명으로 바꿔 주세요.")
     if len(pages.texts.get("specs/", "")) < _MIN_SPECS_TEXT:  # 없거나, 화면에서 그려져 받아도 비어 있음
         used = " · ".join(_PAGE_NAMES[sub] for sub in pages.texts if sub != "specs/")
         warnings.append(f"스펙 페이지에서 스펙 표를 읽지 못해 {used}만 보고 정리했습니다. 수치를 한 번 더 확인해 주세요.")

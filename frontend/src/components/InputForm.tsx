@@ -283,7 +283,7 @@ export default function InputForm({ initial, onCreated }: Props) {
 
       <div className="grid gap-4 md:grid-cols-2">
         <label className="block">
-          <span className="text-sm font-medium">제품명 (영문 공식)</span>
+          <span className="text-sm font-medium">제품명 (공식 표기 — 영문명이 있으면 영문)</span>
           <input
             value={fields.product_name}
             onChange={(e) => set("product_name", e.target.value)}

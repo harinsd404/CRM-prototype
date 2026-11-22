@@ -47,7 +47,7 @@
 | `persona` | string | ✔ | 타겟 페르소나(관심사). 빈 문자열 불가 |
 | `mood` | `Mood` | ✔ | 소구 강도 |
 | `template_id` | int \| null | – | 불러온 제품 템플릿 id (없으면 직접 입력) |
-| `product_name` | string | ✔ | 영문 공식 제품명 |
+| `product_name` | string | ✔ | 공식 제품명. 영문명이 있으면 영문(Galaxy Z Fold8), 없으면 한국어 공식명(양문형 냉장고 846L). 모델 코드는 쓰지 않는다 (가져오기에서 모델 코드 모양이면 경고) |
 | `colors` | string | ✔ | 컬러 라인업, 쉼표로 구분. 이름 뒤에 헥스를 선택으로 붙인다 (`라벤더 #C8B6E2, 그라파이트`). 프롬프트 [입력 데이터]·카피 검사에는 이름만 쓰고, 헥스는 ③ 이미지 모델에 '기준 톤'으로 넘긴다 (장면 조명·배경에 맞춰 조금 달라져도 됨, `state.py parse_colors`). ③에서 제품 색은 이 이름 중 하나여야 한다 |
 | `pods` | `PodInput[]` | ✔ | 이번에 쓰는 Pod, **기본 순서대로** 1~10개. 이름·영문 이름이 겹치면 422. 스펙은 **하나 이상 내용이 있어야 함** (없으면 422) |
 | `pods[].name` | string | ✔ | Pod 이름. eyebrow와 ③ 슬롯 이름으로 그대로 쓴다 |
@@ -133,7 +133,7 @@ LLM에는 이 JSON 대신 아래처럼 바꾼 `[입력 데이터]` 블록이 모
 | `input` | `RunInput` | 1절 |
 | `steps` | `{"pod"\|"copy"\|"image": {"slots": {슬롯명: SlotState}}}` | 단계별 상태. 아직 생성 전이면 `slots`가 빈 객체 |
 | `html` | string \| null | ④ 조립 결과. 앞 단계를 다시 생성하면 null, 고치기만 하면 바로 다시 조립 |
-| `job` | `Job` \| null | 서버에서 도는 생성·수정 작업 `{id, kind: generate\|revise, step, slot, started_at, error}`. 끝나면 null, 끝내 실패하면 `error`가 남는다 (다음 작업이 덮어씀). 서버가 재시작되면 돌던 작업은 "중단됨" 오류로 정리된다 |
+| `job` | `Job` \| null | 서버에서 도는 생성·수정 작업 `{id, kind: generate\|revise, step, slot, started_at, error}`. 끝나면 null, 끝내 실패하면 `error`가 남는다 (다음 작업이 덮어씀). 서버가 재시작되면 돌던 작업은 "중단됨" 오류로 정리된다 (정상 종료 때 작업이 취소되면 그 자리에서 오류·pending 해제·이미지 원래 안 복원, 강제 종료면 다음 시작 때 `clear_unfinished_jobs`) |
 
 **생성·수정은 백그라운드 작업이다.** `POST …/generate`·`POST …/revise`는 검사(선행 단계·슬롯·요청 한도·이미지 한도)만 하고 `job`을 기록한 실행을 바로 돌려준다.
 화면은 `GET /api/runs/{id}`를 2초마다 읽어 `job.id`가 바뀌거나 사라지면 끝, `job.error`가 있으면 실패로 본다 (`frontend/src/api.ts waitForJob`).
@@ -302,6 +302,7 @@ Pod마다 슬롯이 하나씩 있고, 슬롯마다 아래 안이 3개씩 생긴�
 | `prompt` | string | 이미지 모델에 실제로 보낸 프롬프트 = P2 원문(`prompts/image_model.md`) + 아래 연출안 블록 |
 | `image_url` | string | 생성된 이미지 주소 `/api/files/{run_id}/images/{8자리}.png` |
 | `face_visible` | bool \| null | 예전 실행(얼굴 비노출 정책 때)의 얼굴 판정 결과. 지금은 판정하지 않아 항상 null (읽기 호환용) |
+| `product_mismatch` | string \| null | 완성 이미지 속 제품이 그 상태의 주 참조 사진과 다른 모델로 보이면 무엇이 다른지 (텍스트 모델이 두 사진을 비교, 색·조명·각도·열림 정도는 무시하고 형태·특징 부위 개수와 배치만). 있으면 안에 경고. 수정한 안도 판정한다. 냉장고 QA에서 4도어·하냉동형으로 그려진 3장을 잡았다 |
 
 연출안 프롬프트에는 무드별 빛·시간대(`MOOD_GUIDES`: HOT 저녁·네온 / WARM 낮 자연광 / COLD 확산광)와 다른 Pod에서 이미 쓴 장면·컬러(고른 안, 없으면 만든 안 전부)를 넘긴다.
 장면이 무드와 맞지 않는 빛(HOT인데 '햇살', '노을' 등)이면 경고.

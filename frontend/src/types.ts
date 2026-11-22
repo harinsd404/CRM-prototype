@@ -73,6 +73,7 @@ export interface ImageContent {
   brief: ImageBrief;
   prompt: string;
   image_url: string;
+  product_mismatch?: string | null; // 제품이 공식 사진과 다른 모델로 보이면 그 이유 (AI 판정, 경고로도 표시)
 }
 
 export interface StepContents {

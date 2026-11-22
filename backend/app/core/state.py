@@ -65,7 +65,7 @@ class RunInput(BaseModel):
     target_id: str = Field(default="P1", description="타겟 구분 (P1/P2/P3)")
     persona: str = Field(min_length=1, description="타겟 페르소나 (관심사)")
     mood: Mood  # 소구 강도 (HOT / WARM / COLD)
-    product_name: str = Field(min_length=1, description="영문 공식 제품명")
+    product_name: str = Field(min_length=1, description="공식 제품명 (영문명이 있으면 영문, 없으면 한국어 공식명)")
     colors: str = Field(min_length=1, description="컬러 라인업 (쉼표로 구분)")
     pods: list[PodInput] = Field(min_length=1, max_length=MAX_PODS, description="이번에 쓰는 Pod (기본 순서대로)")
     # 공식 제품 사진을 바꾸거나 지운 자리만 적는다. 없는 자리 = 기본 사진, null = 지움, 문자열 = 올린 파일 이름

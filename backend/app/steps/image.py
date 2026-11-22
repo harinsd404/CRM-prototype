@@ -1,9 +1,15 @@
+import asyncio
+import base64
+import io
+import logging
 import random
 import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
+from langchain_core.messages import HumanMessage
+from PIL import Image
 from pydantic import BaseModel, Field, model_validator
 
 from app.config import settings
@@ -18,7 +24,10 @@ from app.core.prompts import PROMPT_DIR
 from app.core.state import RunState, SlotState, strip_hex
 from app.core.store import EXTRA_PREFIX, product_image_dir, run_dir
 from app.providers.image import Reference, get_image_provider
+from app.llm import get_chat_model
 from app.steps.base import OnOption, Step, invoke_structured, option_label, with_feedback
+
+logger = logging.getLogger(__name__)
 
 _STYLE_ANCHOR = "style_anchor"  # P2의 첨부 ② (선택, assets/product)
 _REFERENCE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
@@ -100,6 +109,56 @@ class ImageOption(BaseModel):
     image_url: str
     # 예전 실행(얼굴 비노출 정책 때)의 얼굴 판정 결과. 지금은 얼굴을 허용해 판정하지 않는다 (읽기 호환용)
     face_visible: bool | None = None
+    # 완성 이미지 속 제품이 그 상태의 공식 사진과 다른 모델로 보이면 무엇이 다른지 (AI 판정, 같거나 판정 못 하면 None)
+    product_mismatch: str | None = None
+
+
+class ProductCheck(BaseModel):
+    same_product: bool = Field(description="광고 사진 속 제품이 공식 사진과 같은 모델이면 true")
+    reason: str = Field(description="다르면 무엇이 다른지 한국어 한 줄 (예: 하단에 서랍 2칸이 있는 4도어), 같으면 빈 문자열")
+
+
+_CHECK_SIDE = 768  # 판정용으로 줄여 보내는 크기
+
+
+def _image_block(path: Path) -> dict:
+    with Image.open(path) as image:
+        image = image.convert("RGB")
+        image.thumbnail((_CHECK_SIDE, _CHECK_SIDE))
+        buffer = io.BytesIO()
+        image.save(buffer, "JPEG", quality=85)
+    data = base64.b64encode(buffer.getvalue()).decode()
+    return {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{data}"}}
+
+
+async def check_product(path: Path, reference: Path, device_noun: str) -> str | None:
+    """완성 이미지 속 제품이 공식 사진과 같은 모델인지 텍스트 모델(이미지 입력)에게 묻는다. 다르면 이유, 아니면 None.
+    QA(냉장고): 참조 사진을 보냈는데도 13장 중 3장이 하단 서랍 4도어·하냉동 같은 다른 냉장고였고, 작은 카드에서는
+    사람이 알아보기 어려워 그대로 골랐다. 경고용이라 판정에 실패하면 None (생성은 막지 않는다)."""
+    if settings.llm_provider == "mock":
+        return None
+    try:
+        message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": f"[사진 1]은 광고 사진, [사진 2]는 이 {device_noun}의 공식 제품 사진입니다. "
+                    "사진 1 속 제품이 사진 2와 같은 모델인지 판정하세요. 색·조명·배경·촬영 각도·문이나 덮개가 열린 정도·"
+                    "화면 내용 차이는 무시하고, 전체 형태와 비율, 문·버튼·카메라·손잡이 같은 특징 부위의 개수와 배치만 봅니다. "
+                    "제품이 일부만 보여 판단할 수 없으면 같은 것으로 봅니다.",
+                },
+                {"type": "text", "text": "[사진 1]"},
+                _image_block(path),
+                {"type": "text", "text": "[사진 2]"},
+                _image_block(reference),
+            ]
+        )
+        model = get_chat_model().with_structured_output(ProductCheck, method="json_schema")
+        result = await asyncio.wait_for(model.ainvoke([message]), settings.llm_timeout)
+        return None if result.same_product else (result.reason.strip() or "형태가 다름")
+    except Exception:
+        logger.warning("제품 모양 판정 실패: %s", path.name, exc_info=True)
+        return None
 
 
 def normalize_brief(brief: ImageBrief, layout: str, profile: ProductProfile) -> None:
@@ -157,9 +216,19 @@ def reference_images(run: RunState, brief: ImageBrief) -> list[Reference]:
     if profile.reference_color not in brief.color:
         # 컬러별 사진 자리(라벨에 컬러 이름, 예: '핑크 골드 컬러 라인업')가 있으면 그 사진을, 없으면 컬러 라인업 자리를 보낸다.
         # 실측: 버즈4 프로는 블랙·핑크 골드 사진이 따로 있는데 color_slot은 하나라 핑크 골드 장면에도 블랙 사진이 갔다
+        # 사진이 실제로 있고 주 참조·상태 참조와 겹치지 않는 자리만 (라벨이 '실버 앞면'인 주 사진이 두 번 붙거나,
+        # 사진 없는 컬러 자리를 골라 컬러 참조가 통째로 빠지지 않게)
         color_name = strip_hex(brief.color).strip()
-        by_color = next((s.key for s in profile.photo_slots if color_name and color_name in s.label), None)
-        if (slot_key := by_color or profile.color_slot) and slot_key not in stems:
+        by_color = next(
+            (
+                s.key
+                for s in profile.photo_slots
+                if color_name and color_name in s.label and s.key != main and s.key not in stems
+                and _find_reference(folder, s.key)
+            ),
+            None,
+        )
+        if (slot_key := by_color or profile.color_slot) and slot_key != main and slot_key not in stems:
             stems.append(slot_key)
     found = [Reference(product, captions[main])]
     found += [Reference(path, captions[stem]) for stem in stems if (path := _find_reference(folder, stem))]
@@ -363,25 +432,30 @@ class ImageStep(Step):
         prompt = build_image_prompt(run, slot, layout, brief)
         out_dir = run_dir(run.id) / "images"
         out_dir.mkdir(parents=True, exist_ok=True)
+        references = reference_images(run, brief)
         path = await get_image_provider().generate(
             prompt,
-            reference_images(run, brief),
+            references,
             out_dir,
             ratio=brief.ratio,
             label=f"{slot} · {brief.concept}",
             seed=random.randint(0, 2**31 - 1),
             pod=run.input.pod(slot).key,
         )
-        return ImageOption(brief=brief, prompt=prompt, image_url=f"/api/files/{run.id}/images/{path.name}")
+        mismatch = await check_product(path, references[0].path, run.input.product_profile.device_noun) if references else None
+        return ImageOption(
+            brief=brief, prompt=prompt, image_url=f"/api/files/{run.id}/images/{path.name}", product_mismatch=mismatch
+        )
 
     async def revise_option(self, run: RunState, slot: str, content: ImageOption, request: str) -> ImageOption:
         """이미 만든 이미지 한 장을 사람의 요청대로 고친 새 안을 만든다. 연출안(brief)은 그대로 둔다."""
         images = run_dir(run.id) / "images"
         source = images / Path(content.image_url).name
+        references = reference_images(run, content.brief)
         path = await get_image_provider().edit(
             source,
             request,
-            reference_images(run, content.brief),
+            references,
             images,
             ratio=content.brief.ratio,
             seed=random.randint(0, 2**31 - 1),
@@ -392,12 +466,22 @@ class ImageStep(Step):
             brief=content.brief,
             prompt=f"{content.prompt}\n# Revision Request\n{request}\n",
             image_url=f"/api/files/{run.id}/images/{path.name}",
+            product_mismatch=(
+                await check_product(path, references[0].path, run.input.product_profile.device_noun)
+                if references
+                else None
+            ),
         )
 
     def postprocess(self, run: RunState, slot: str, content: ImageOption) -> list[str]:
         layout = self._plan_item(run, slot)["layout"]
         normalize_brief(content.brief, layout, run.input.product_profile)
         warnings = check_brief(content.brief, layout, run.input.color_list, run.input.mood)
+        if content.product_mismatch:
+            warnings.append(
+                f"제품 모양이 공식 사진과 다를 수 있습니다 (AI 판정): {content.product_mismatch}. "
+                "크게 보고 확인한 뒤, 다르면 '수정 요청'이나 다시 생성을 해 주세요."
+            )
         return warnings
 
     def _mock_brief(self, run: RunState, pod: str, layout: str, angle: str, index: int) -> ImageBrief:

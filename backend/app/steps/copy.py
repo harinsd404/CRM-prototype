@@ -178,9 +178,10 @@ def _sentences(text: str) -> int:
     return len([s for s in re.split(r"[.?!]\s*", text) if s.strip()])
 
 
-def _keeps_facts(old: str, new: str, sentences: bool) -> bool:
-    """줄인 글이 수치·조건(…기준)을 빠뜨리지 않았는지. 바디는 2문장 이상도 유지해야 한다 (어미 배열이 깨지지 않게)."""
-    if not numbers(old) <= numbers(new) or new.count("기준") < old.count("기준"):
+def _keeps_facts(old: str, new: str, sentences: bool, check_basis: bool = True) -> bool:
+    """줄인 글이 수치·조건(…기준)을 빠뜨리지 않았는지. 바디는 2문장 이상도 유지해야 한다 (어미 배열이 깨지지 않게).
+    check_basis=False: 틀린 조건(…기준)을 스펙의 조건(…사용 시)으로 바꾸는 보정이라 '기준'이 줄어도 된다 (조건은 따로 검사)."""
+    if not numbers(old) <= numbers(new) or (check_basis and new.count("기준") < old.count("기준")):
         return False
     return not sentences or _sentences(new) >= min(2, _sentences(old))
 
@@ -232,13 +233,16 @@ async def tone_down_copy(copy: CopyOption, sources: dict[str, str]) -> None:
             continue
         headline, body = new.headline.strip(), new.body.strip()
         source = sources.get(p.pod, "")
+        # 조건 누락을 고친 Pod는 조건이 바뀌는 게 정상이므로 '기준' 개수 대신 조건 검사(copy_issues)로 판단한다
+        fixing_condition = any(issue.startswith("조건 누락") for issue in flagged[p.pod])
+        basis = not fixing_condition or bool(missing_conditions(headline, body, source))
         scene = _compact(p.target_scene)
         if (
             headline
             and body
             and len(copy_issues(headline, body, source)) < len(flagged[p.pod])
-            and _keeps_facts(p.headline, headline, sentences=False)
-            and _keeps_facts(p.body, body, sentences=True)
+            and _keeps_facts(p.headline, headline, sentences=False, check_basis=basis)
+            and _keeps_facts(p.body, body, sentences=True, check_basis=basis)
             and (not scene or scene not in _compact(p.body) or scene in _compact(body))
             # 길이는 바로 다음 줄이기 단계(shorten_copy)가 맞춘다. 실측: 과장을 사실로 바꾸면 110자를 조금 넘기 쉬워
             # 길이로 거르면 제대로 고친 결과를 버렸다. 터무니없이 길어진 것만 버린다
