@@ -15,7 +15,7 @@ from app.core.profile import ProductProfile
 from app.core.store import default_product_image, upload_path
 
 MIN_LONG_SIDE = 1000
-MIN_IMAGES = 4  # 필수 3자리 + 측면이나 컬러 등 1장 이상
+MIN_IMAGES = 4  # 상태별 주 참조 + 다른 각도·디테일 사진. 제품마다 상태 수가 달라도 이 정도는 있어야 지어내지 않는다
 
 
 class ImageInfo(BaseModel):

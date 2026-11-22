@@ -48,6 +48,15 @@ class ProductProfile(BaseModel):
         f"몸체 색은 '{COLOR_TOKEN}'로 적는다"
     )
     screen_rules: str = Field(default="", description="화면이 있는 제품이면 화면 표현 규칙(영어), 없으면 빈 문자열")
+    usage: str = Field(
+        default="",
+        description="사람이 이 제품을 실제로 어떻게 쓰는지 한국어 한 줄 (연출안 작성자에게). "
+        "예: 한 손에 쥐고 봄 / 손목에 참 / 주방에 설치해 두고 문을 엶",
+    )
+    person_rules: str = Field(
+        default="",
+        description="손·인물이 함께 나올 때 이미지 모델용 영어 규칙 (마크다운 목록). 제품을 쓰는 자세·손의 위치·사람과의 크기 비교",
+    )
     check: str = Field(description="이미지 모델이 출력 전에 확인할 제품 관련 항목 (영어 한 줄, · 로 구분)")
     edit_rules: str = Field(description="이미지 수정 때 제품이 바뀌지 않게 지킬 영어 규칙 (마크다운 목록)")
     photo_slots: list[PhotoSlot]
@@ -120,6 +129,9 @@ FOLD_PROFILE = ProductProfile(
 - Fully closed or fully flat open only — never half folded. No stylus.""",
     screen_rules="""Show [화면 콘텐츠] as abstract UI: grey placeholder bars, colored blocks, image tiles.
 No readable text, numbers, prices, or app/brand logos. Games and videos are generic original scenes.""",
+    usage="접은 상태는 한 손에 쥐고, 펼친 상태는 두 손으로 잡거나 테이블에 두고 봄",
+    person_rules="""- Closed: held in one hand like an ordinary phone, thumb at the side of the frame.
+- Fully unfolded: held with two hands at the left and right edges, or resting flat on a table.""",
     check="the side named above facing the camera · its own proportion · tight equal corners",
     edit_rules="""- The phone must stay exactly the device shown in the other attached official product images:
   same silhouette and proportion, same tight corner radius (about 1/30 of the body height),

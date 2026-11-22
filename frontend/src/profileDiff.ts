@@ -6,6 +6,8 @@ export function flattenProfile(profile: ProductProfile): Record<string, string> 
     device_noun: profile.device_noun,
     device_rules: profile.device_rules,
     screen_rules: profile.screen_rules,
+    usage: profile.usage ?? "",
+    person_rules: profile.person_rules ?? "",
     check: profile.check,
     edit_rules: profile.edit_rules,
     reference_color: profile.reference_color,

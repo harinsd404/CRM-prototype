@@ -27,6 +27,10 @@
     (예: 여러 대가 찍힌 사진이면 "ONE device only, ignore the arrangement").
   - required: 이 사진 없이는 그 상태를 그릴 수 없으면 true.
   - key는 영문 소문자·숫자·_ 이고 extra로 시작하지 않습니다.
+- usage: 사람이 이 제품을 실제로 어떻게 쓰는지 한국어 한 줄. 연출안 작성자가 손·인물 장면을 쓸 때 따릅니다.
+  (예: 워치 → 손목에 차고 화면을 봄, 냉장고 → 주방에 설치돼 있고 사람은 문을 열거나 옆에 섬, 이어폰 → 귀에 꽂거나 케이스를 손에 쥠)
+- person_rules: 손·인물이 함께 나올 때 이미지 모델용 영어 규칙 목록. 제품을 쓰는 자세, 손이 닿는 곳, 사람과의 크기 비교.
+  (예: "- Worn on the left wrist, face toward the camera." / "- The refrigerator stays in place; a hand only touches the door handle.")
 - screen_rules: 화면이 있으면 화면에 보여줄 것의 영어 규칙 (글자·숫자·로고 없는 추상 UI). 화면이 없으면 빈 문자열.
 - check: 출력 전 확인할 이 제품의 핵심 항목을 영어로 · 구분 한 줄 (예: the side named above facing the camera · round face · two side buttons).
 - edit_rules: 이미지를 고칠 때 제품이 바뀌지 않게 지킬 영어 규칙 목록 (형태·비율·특징 부위 개수·몸체 색).

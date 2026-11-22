@@ -99,6 +99,7 @@ def _mock_draft(request: ProfileRequest) -> ProfileDraft:
         profile=ProductProfile(
             device_noun=f"[mock] {request.product_name}",
             device_rules="- [mock] Keep the exact shape shown in the product photo.\n- Body color exactly [제품 컬러].",
+            usage="[예시] 손에 쥐거나 옆에 두고 씀",
             check="the side named above facing the camera · its own proportion",
             edit_rules="- Keep the exact shape, proportion and body color of the product photo.",
             photo_slots=[PhotoSlot(key="front", label="정면", caption="[Product reference — FRONT.]", required=True)],

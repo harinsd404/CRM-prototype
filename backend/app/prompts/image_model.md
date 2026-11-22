@@ -3,7 +3,7 @@
      base → [제품 프로필: # Device, 상태 규칙, # Screen] → person(손·인물이 있을 때) 또는 no_person → safe_zone(L3일 때)
      → mood_HOT·mood_WARM·mood_COLD 중 1개 → # Input Data → check.
      제품마다 다른 부분(기기 묘사, 상태별 비율·보이는 면, 화면 규칙, 확인 항목)은 템플릿의 제품 프로필(app/core/profile.py)에 있다.
-     {device_noun}·{product_check}는 코드가 프로필 값으로 바꾼다. LangChain을 거치지 않으므로 다른 중괄호는 그대로 써도 된다. -->
+     {device_noun}·{product_check}·{person_rules}는 코드가 프로필 값으로 바꾼다. LangChain을 거치지 않으므로 다른 중괄호는 그대로 써도 된다. -->
 
 ## @base
 
@@ -35,8 +35,8 @@ If no product image is attached, output only: "Attach the product reference imag
 ## @person
 
 # Hands and people
-- Natural hands with five fingers, using the device the way it is really used
-  (held in the hand, or worn on the wrist if it is a wearable).
+- Natural hands with five fingers, using the device the way it is really used.
+{person_rules}
 - Fingers never cover the screen or the device's key features.
 - No face: crop below the chin or show only hands and arms. A head turned fully away is fine.
 

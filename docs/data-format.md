@@ -578,6 +578,8 @@ API: `POST·GET /api/runs/{id}/feedback`(내 실행) · `GET /api/feedback?templ
 | `states[]` | key·rules 영어, label·brief_hint 한국어 | 연출안의 `state`, 이미지 프롬프트의 상태 규칙. `shows_screen`·`orientation`은 코드가 연출안을 맞출 때, `photos`(첫 번째 = 주 참조)는 참조 사진 고를 때 |
 | `photo_slots[]` | label 한국어, caption 영어 | 입력 화면의 사진 칸, 이미지 모델에 사진과 함께 보내는 설명. `required`·주 참조 자리가 비면 경고 |
 | `screen_rules` | 영어 | 화면이 보이는 상태일 때 `# Screen` |
+| `usage` | 한국어 | ③ 연출안 프롬프트: 손·인물 장면에서 제품을 쓰는 방식 (손에 쥠 / 손목에 참 / 설치해 두고 문을 엶). 비면 제품 크기에 맞게 쓰라는 기본 문장 |
+| `person_rules` | 영어 | 손·인물이 있는 이미지의 `# Hands and people`에 들어가는 제품별 규칙. 비면 같은 기본 문장(영어) |
 | `check`, `edit_rules` | 영어 | 이미지 프롬프트 마지막 확인 줄, 이미지 수정 때 지킬 규칙 |
 | `reference_color`, `color_slot` | | 사진 속 제품 컬러가 아니면 컬러 라인업 사진도 함께 보낸다 |
 | `copy_terms` | 한국어 | ② 카피 프롬프트의 "그대로 쓸 공식 표기" |

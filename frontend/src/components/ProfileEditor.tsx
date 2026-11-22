@@ -59,9 +59,12 @@ export default function ProfileEditor({ value, onChange, lockSlots = false }: Pr
     set("photo_slots", value.photo_slots.map((slot, j) => (j === i ? { ...slot, ...patch } : slot)));
   const setState = (i: number, patch: Partial<ProductState>) =>
     set("states", value.states.map((state, j) => (j === i ? { ...state, ...patch } : state)));
-  const text = (key: "device_rules" | "screen_rules" | "edit_rules" | "pod_guide" | "copy_guide" | "visual_guide", code = false) => (
+  const text = (
+    key: "device_rules" | "screen_rules" | "person_rules" | "edit_rules" | "pod_guide" | "copy_guide" | "visual_guide",
+    code = false,
+  ) => (
     <textarea
-      value={value[key]}
+      value={value[key] ?? ""}
       onChange={(e) => set(key, e.target.value)}
       rows={rows(value[key])}
       className={code ? codeClass : inputClass}
@@ -77,6 +80,9 @@ export default function ProfileEditor({ value, onChange, lockSlots = false }: Pr
           <input value={value.copy_terms} onChange={(e) => set("copy_terms", e.target.value)} className={inputClass} />
         </Field>
         <Field label="연출 가이드 (visual_guide)">{text("visual_guide")}</Field>
+        <Field label="제품을 쓰는 방식 (usage)" hint="손·인물 장면에서. 예: 손목에 참 / 설치해 두고 문을 엶">
+          <input value={value.usage ?? ""} onChange={(e) => set("usage", e.target.value)} className={inputClass} />
+        </Field>
       </Section>
 
       <Section title="기기 묘사" hint="이미지 모델용 영어. 몸체 색은 [제품 컬러]로">
@@ -86,6 +92,9 @@ export default function ProfileEditor({ value, onChange, lockSlots = false }: Pr
         <Field label="# Device (device_rules)">{text("device_rules", true)}</Field>
         <Field label="# Screen (screen_rules)" hint="화면이 없는 제품이면 비움">
           {text("screen_rules", true)}
+        </Field>
+        <Field label="# Hands and people (person_rules)" hint="손·인물이 나올 때 제품을 쓰는 자세. 비우면 기본 규칙">
+          {text("person_rules", true)}
         </Field>
         <Field label="출력 전 확인 (check)" hint="· 로 구분">
           <input value={value.check} onChange={(e) => set("check", e.target.value)} className={inputClass} />

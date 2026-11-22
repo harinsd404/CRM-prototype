@@ -145,6 +145,8 @@ export interface ProductProfile {
   device_noun: string;
   device_rules: string;
   screen_rules: string;
+  usage: string; // 사람이 제품을 쓰는 방식 (한국어, 연출안용)
+  person_rules: string; // 손·인물이 나올 때 이미지 모델 규칙 (영어)
   check: string;
   edit_rules: string;
   photo_slots: PhotoSlot[];

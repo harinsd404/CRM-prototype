@@ -11,9 +11,9 @@
 # 제품 프로필이 쓰이는 곳
 - pod_guide → ① Pod 순서·레이아웃 기획 프롬프트 끝에 붙는 이 제품의 지침 (한국어)
 - copy_guide, copy_terms → ② 카피 프롬프트 (톤, 피할 표현, 그대로 쓸 공식 표기)
-- visual_guide, states[].brief_hint → ③ 이미지 연출안 프롬프트 (장면, 소품, 피할 연출)
-- device_noun, device_rules, states[].rules, screen_rules, check, edit_rules, photo_slots[].caption → 이미지 생성 모델(영어)
-  (제품 모양이 틀리게 나온다, 앞뒤가 섞인다, 화면에 글자가 나온다 같은 피드백)
+- visual_guide, usage, states[].brief_hint → ③ 이미지 연출안 프롬프트 (장면, 소품, 피할 연출, 제품을 쓰는 방식)
+- device_noun, device_rules, states[].rules, screen_rules, person_rules, check, edit_rules, photo_slots[].caption → 이미지 생성 모델(영어)
+  (제품 모양이 틀리게 나온다, 앞뒤가 섞인다, 화면에 글자가 나온다, 손으로 쥐는 모양이 어색하다 같은 피드백)
 
 # 규칙
 1. 피드백이 실제로 가리키는 문제만 고칩니다. 피드백과 관계없는 부분은 글자 하나도 바꾸지 않습니다.

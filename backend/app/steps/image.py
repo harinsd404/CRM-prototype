@@ -29,6 +29,13 @@ _EXTRA_CAPTION = (
 )
 SCREEN_HIDDEN = "보이지 않음 (화면이 카메라를 향하지 않음)"
 
+# 프로필에 사용 방식(usage·person_rules)이 없을 때 (이 항목 전에 만든 템플릿). 제품 크기로 갈라 쓴다
+_DEFAULT_USAGE = "제품 크기에 맞게: 작은 기기는 손에 쥐거나 착용하고, 큰 가전은 손잡이·문·조작부를 만지거나 옆에서 씀"
+_DEFAULT_PERSON_RULES = (
+    "- Interact with it the way its size allows: small devices are held in the hand or worn on the wrist;\n"
+    "  large appliances stay in place while a hand touches a handle, door or control panel."
+)
+
 # L3 Safe Zone 설명에 쓰면 이미지에 단색 띠가 생기는 단어 (원본 P1 Safe Zone Rules)
 _SAFE_ZONE_BANNED = ("여백", "빈 공간", "패널", "띠", "프레임")
 
@@ -191,7 +198,9 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
         f"# Device\n{profile.device_rules.strip()}",
         state.rules.strip(),
         *([f"# Screen\n{profile.screen_rules.strip()}"] if shows_screen else []),
-        common["person"] if has_person else common["no_person"],
+        common["person"].replace("{person_rules}", profile.person_rules.strip() or _DEFAULT_PERSON_RULES)
+        if has_person
+        else common["no_person"],
         *([common["safe_zone"]] if layout == "L3" else []),
         common[f"mood_{run.input.mood}"],
     ]
@@ -219,8 +228,8 @@ class ImageStep(Step):
     name = "image"
     schema = ImageOption
     angles = [
-        "제품 단독(Base) 클로즈업, 또는 제품을 실제로 쓰는 손(쥐거나 착용)과 함께한 클로즈업",
-        "손이나 인물(얼굴 비노출)이 함께 있는 사용 장면",
+        "제품 단독(Base) 클로즈업, 또는 제품을 실제로 쓰는 손과 함께한 클로즈업",
+        "손이나 인물(얼굴 비노출)이 제품을 쓰는 장면",
         "공간·배경 연출이 돋보이는 장면",
     ]
 
@@ -252,6 +261,7 @@ class ImageStep(Step):
             "headline": copy["headline"],
             "body": copy["body"],
             "device_noun": profile.device_noun,
+            "usage": profile.usage.strip() or _DEFAULT_USAGE,
             "state_guide": state_guide(profile),
             "visual_guide": profile.guide("visual"),
         }
