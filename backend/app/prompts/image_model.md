@@ -38,7 +38,13 @@ If no product image is attached, output only: "Attach the product reference imag
 - Natural hands with five fingers, using the device the way it is really used.
 {person_rules}
 - Fingers never cover the screen or the device's key features.
-- No face: crop below the chin or show only hands and arms. A head turned fully away is fine.
+
+# No face (overrides every pose above)
+- No part of a face is in the frame: no eyes, nose, mouth, lips, chin or profile.
+- Frame the person from the shoulders or neck down, or show only hands and arms.
+  The top edge of the image cuts below the chin. A head seen fully from behind is fine.
+- If the device is raised toward the face (speaking to it, a call, checking it up close),
+  shoot a tight close-up of the hand and the device so the head stays outside the frame.
 
 ## @safe_zone
 

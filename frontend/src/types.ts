@@ -72,6 +72,7 @@ export interface ImageContent {
   brief: ImageBrief;
   prompt: string;
   image_url: string;
+  face_visible?: boolean | null; // 완성 이미지에 얼굴이 보이는지 (AI 판정, 인물 있는 안만)
 }
 
 export interface StepContents {

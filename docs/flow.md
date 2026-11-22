@@ -38,7 +38,7 @@ flowchart TD
     LOOP --> G3["🟦 ③-a 이미지 연출안 생성<br/>prompts/image_brief.md 1번 → 서로 다른 3안"]
     G3 -- "ImageBrief" --> N3["⬜ 화면비·Safe Zone을 레이아웃에 맞춤<br/>image_model.md + 제품 규칙에서 필요한 상태만 + 연출안 → 이미지 프롬프트"]
     N3 -- "프롬프트 + 공식 제품 사진" --> G3b["🟦 ③-b 이미지 모델 (안마다 1장)<br/>gemini-3.1-flash-image"]
-    G3b -- "ImageOption × 3 (이미지 파일)" --> C3["⬜ 규칙 검사 check_brief<br/>컬러 라인업·L3 금지어·얼굴/손"]
+    G3b -- "ImageOption × 3 (이미지 파일)" --> C3["⬜ 규칙 검사 check_brief<br/>컬러 라인업·L3 금지어·얼굴/손<br/>+ 🟦 완성 이미지 얼굴 판정"]
     C3 --> H3{"🟧 사람: Pod마다 1개 선택"}
     H3 -- "이 Pod만 다시 생성 (+feedback)" --> G3
     H3 -- "이미지 한 장 수정 요청" --> R3["🟦 원본 이미지 + 제품 사진 + 요청<br/>→ 고친 새 안을 추가·선택"]

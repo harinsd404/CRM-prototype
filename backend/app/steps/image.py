@@ -1,9 +1,15 @@
+import asyncio
+import base64
+import io
+import logging
 import random
 import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
+from langchain_core.messages import HumanMessage
+from PIL import Image
 from pydantic import BaseModel, Field, model_validator
 
 from app.config import settings
@@ -18,7 +24,10 @@ from app.core.prompts import PROMPT_DIR
 from app.core.state import RunState, SlotState, strip_hex
 from app.core.store import EXTRA_PREFIX, product_image_dir, run_dir
 from app.providers.image import Reference, get_image_provider
+from app.llm import get_chat_model
 from app.steps.base import OnOption, Step, invoke_structured, option_label, with_feedback
+
+logger = logging.getLogger(__name__)
 
 _STYLE_ANCHOR = "style_anchor"  # P2의 첨부 ② (선택, assets/product)
 _REFERENCE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
@@ -35,6 +44,11 @@ _DEFAULT_PERSON_RULES = (
     "- Interact with it the way its size allows: small devices are held in the hand or worn on the wrist;\n"
     "  large appliances stay in place while a hand touches a handle, door or control panel."
 )
+
+# 인물 묘사에 쓰면 얼굴이 화면에 들어오는 말 (face hidden 위반). "눈높이"(카메라 각도)·"눈이 내리는"·"코트" 같은 말은 걸리지 않게 좁게 잡는다
+_FACE_WORDS = re.compile(r"얼굴|옆모습|표정|미소|웃는|입가|입술|입 ?(가까이|근처|앞|쪽|높이)|눈(을|빛|썹)|시선|콧|코끝|턱(을|이|선| 아래| 근처)?|머리를 숙|고개")
+_PERSON_TYPES = ("Hand-held", "인물 포함")
+_FACE_CHECK_SIDE = 768  # 얼굴 판정용으로 줄여 보내는 크기
 
 # L3 Safe Zone 설명에 쓰면 이미지에 단색 띠가 생기는 단어 (원본 P1 Safe Zone Rules)
 _SAFE_ZONE_BANNED = ("여백", "빈 공간", "패널", "띠", "프레임")
@@ -79,6 +93,51 @@ class ImageOption(BaseModel):
     brief: ImageBrief
     prompt: str = Field(description="이미지 모델에 넣을 최종 프롬프트 (P2 + 이미지 Input Data)")
     image_url: str
+    face_visible: bool | None = None  # 완성 이미지에 얼굴이 보이는지 (인물이 있는 안만 판정, 판정 못 하면 None)
+
+
+class FaceCheck(BaseModel):
+    face_visible: bool = Field(description="사람 얼굴의 일부(눈·코·입·입술·턱·옆얼굴)가 조금이라도 보이면 true")
+    note: str = Field(description="보이는 부위를 한국어로 짧게, 없으면 빈 문자열")
+
+
+def face_words(brief: ImageBrief) -> list[str]:
+    """인물 묘사·구도에 얼굴이 들어오는 말이 있는지."""
+    text = f"{brief.person_hand} {brief.composition}"
+    return list(dict.fromkeys(m.group(0) for m in _FACE_WORDS.finditer(text)))
+
+
+def _face_words_in(briefs: list[ImageBrief]) -> list[str]:
+    return list(dict.fromkeys(w for b in briefs if b.image_type in _PERSON_TYPES for w in face_words(b)))
+
+
+async def check_face(path: Path) -> bool | None:
+    """완성 이미지에 얼굴이 보이는지 텍스트 모델(이미지 입력)에게 묻는다. 경고용이라 실패하면 None."""
+    if settings.llm_provider == "mock":
+        return None
+    try:
+        with Image.open(path) as image:
+            image = image.convert("RGB")
+            image.thumbnail((_FACE_CHECK_SIDE, _FACE_CHECK_SIDE))
+            buffer = io.BytesIO()
+            image.save(buffer, "JPEG", quality=85)
+        data = base64.b64encode(buffer.getvalue()).decode()
+        message = HumanMessage(
+            content=[
+                {
+                    "type": "text",
+                    "text": "이 광고 사진에 사람 얼굴의 일부(눈, 코, 입, 입술, 턱, 옆얼굴)가 조금이라도 보이나요? "
+                    "뒤통수만 보이거나 손·팔·목 아래 몸만 보이면 false입니다.",
+                },
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{data}"}},
+            ]
+        )
+        model = get_chat_model().with_structured_output(FaceCheck, method="json_schema")
+        result = await asyncio.wait_for(model.ainvoke([message]), settings.llm_timeout)
+        return result.face_visible
+    except Exception:
+        logger.warning("얼굴 판정 실패: %s", path.name, exc_info=True)
+        return None
 
 
 def normalize_brief(brief: ImageBrief, layout: str, profile: ProductProfile) -> None:
@@ -108,8 +167,10 @@ def check_brief(brief: ImageBrief, layout: str, colors: list[str]) -> list[str]:
         warnings.append(f"Safe Zone 설명에 금지어가 있습니다: {', '.join(words)}")
     if brief.face == "hidden" and brief.person_hand in ("", "없음"):
         warnings.append("얼굴이 hidden인데 인물/손 묘사가 없습니다.")
-    if brief.image_type in ("Hand-held", "인물 포함") and brief.person_hand in ("", "없음"):
+    if brief.image_type in _PERSON_TYPES and brief.person_hand in ("", "없음"):
         warnings.append(f"이미지 유형이 {brief.image_type}인데 인물/손 묘사가 없습니다.")
+    if brief.image_type in _PERSON_TYPES and (words := face_words(brief)):
+        warnings.append(f"인물 묘사에 얼굴이 들어오는 말이 있습니다: {', '.join(words)}")
     return warnings
 
 
@@ -190,7 +251,7 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
     profile = run.input.product_profile
     state = profile.state(brief.state)
     # 손 블록은 이미지 유형으로 정한다 (person_hand 문구는 "없음(제품만)"처럼 흔들려서 판정에 쓰지 않음)
-    has_person = brief.image_type in ("Hand-held", "인물 포함")
+    has_person = brief.image_type in _PERSON_TYPES
     shows_screen = state.shows_screen and bool(profile.screen_rules.strip())
     common = _model_sections()
     blocks = [
@@ -212,13 +273,15 @@ def build_image_prompt(run: RunState, pod: str, layout: str, brief: ImageBrief) 
         f"- 장면 : {brief.scene}",
         f"- 소품 : {brief.props}",
         *([f"- 화면 콘텐츠 : {brief.screen_content}"] if shows_screen else []),
-        *([f"- 인물/손 : {brief.person_hand}"] if has_person else []),
+        *([f"- 인물/손 : {brief.person_hand}", "- 프레이밍 : 얼굴 없음 — 이미지 위쪽 끝은 턱 아래(목·어깨)에서 자른다"] if has_person else []),
         f"- 구도 : {brief.composition}",
         f"- 화면비 : {brief.ratio}",
         *([f"- Quiet area : {brief.safe_zone}"] if layout == "L3" else []),
     ]
     body = "\n\n".join(blocks)
     check = common["check"].replace("{product_check}", profile.check.strip())
+    if has_person:
+        check = check.rstrip() + " · no face (nothing above the chin)"
     return f"{body}\n\n# Input Data\n" + "\n".join(data) + f"\n\n{check}\n"
 
 
@@ -287,6 +350,21 @@ class ImageStep(Step):
     ) -> list[ImageBrief]:
         if settings.llm_provider == "mock":
             return [self._mock_brief(run, slot, layout, angle, i) for i, angle in enumerate(angles)]
+        briefs = await self._ask_briefs(run, slot, angles, feedback)
+        # 얼굴이 들어오는 연출안은 그대로 그리면 얼굴이 나오기 쉽다 → 이유를 알려 주고 한 번 다시 쓰게 한다.
+        # 그래도 남으면 실패시키지 않는다 (이미지 프롬프트의 No face 규칙과 완성 이미지 판정이 다시 막고, 안에 경고가 남는다).
+        if faces := _face_words_in(briefs):
+            note = (
+                f"직전 연출안이 얼굴이 들어오는 말({', '.join(faces)})을 썼습니다. 인물은 어깨 아래로 자르고, "
+                "제품을 얼굴 쪽으로 드는 동작은 손과 제품만 가깝게 찍는 클로즈업으로 바꿔 쓰세요."
+            )
+            retry = await self._ask_briefs(run, slot, angles, f"{feedback}\n{note}" if feedback else note)
+            if len(_face_words_in(retry)) < len(faces):
+                briefs = retry
+            logger.info("%s 연출안 얼굴 단어 %s → 다시 쓴 뒤 %s", slot, faces, _face_words_in(briefs))
+        return briefs
+
+    async def _ask_briefs(self, run: RunState, slot: str, angles: list[str], feedback: str | None) -> list[ImageBrief]:
         directions = "\n".join(f"{i + 1}안 : {angle}" for i, angle in enumerate(angles))
         result = await invoke_structured(
             "image_brief",
@@ -320,7 +398,10 @@ class ImageStep(Step):
             seed=random.randint(0, 2**31 - 1),
             pod=run.input.pod(slot).key,
         )
-        return ImageOption(brief=brief, prompt=prompt, image_url=f"/api/files/{run.id}/images/{path.name}")
+        face = await check_face(path) if brief.image_type in _PERSON_TYPES else None
+        return ImageOption(
+            brief=brief, prompt=prompt, image_url=f"/api/files/{run.id}/images/{path.name}", face_visible=face
+        )
 
     async def revise_option(self, run: RunState, slot: str, content: ImageOption, request: str) -> ImageOption:
         """이미 만든 이미지 한 장을 사람의 요청대로 고친 새 안을 만든다. 연출안(brief)은 그대로 둔다."""
@@ -340,12 +421,17 @@ class ImageStep(Step):
             brief=content.brief,
             prompt=f"{content.prompt}\n# Revision Request\n{request}\n",
             image_url=f"/api/files/{run.id}/images/{path.name}",
+            # 고친 이미지는 손·인물을 새로 넣었을 수도 있으니 유형과 상관없이 본다
+            face_visible=await check_face(path),
         )
 
     def postprocess(self, run: RunState, slot: str, content: ImageOption) -> list[str]:
         layout = self._plan_item(run, slot)["layout"]
         normalize_brief(content.brief, layout, run.input.product_profile)
-        return check_brief(content.brief, layout, run.input.color_list)
+        warnings = check_brief(content.brief, layout, run.input.color_list)
+        if content.face_visible:
+            warnings.append("이미지에 얼굴이 보입니다 (AI 판정). 이 안을 쓰려면 '수정 요청'으로 얼굴을 잘라 주세요.")
+        return warnings
 
     def _mock_brief(self, run: RunState, pod: str, layout: str, angle: str, index: int) -> ImageBrief:
         colors = run.input.color_list
