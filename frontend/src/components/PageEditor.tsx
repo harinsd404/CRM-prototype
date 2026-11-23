@@ -31,6 +31,7 @@ interface Props {
   frame: HTMLIFrameElement | null; // 미리보기 iframe. 그 안에서 이미지를 직접 조정한다 (FrameCrop)
   frameVersion: number; // iframe이 새로 열릴 때마다 바뀐다
   toolbarHost: HTMLElement | null; // 미리보기 위 이미지 조정 툴바 자리
+  onReloadFrame: () => void; // 미리보기를 저장된 시안으로 새로 연다 (사진 조정이 iframe에 직접 입힌 스타일을 지운다)
 }
 
 type Text = { headline: string; body: string };
@@ -49,7 +50,17 @@ function move(items: Item[], from: number, to: number): Item[] {
  *  - 확정: ①②③에서 고른 안을 바꾼다 (순서·레이아웃 → ① 수정본, 헤드·바디 → ② 수정본, 이미지 → ③ 다른 안 선택).
  *    단계 화면과 최종 시안이 항상 같은 값을 보여 준다.
  *  - 기존 디자인 유지: 고친 값을 버리고 저장된 시안으로 돌아간다. */
-export default function PageEditor({ run, focus, onFocus, onChange, onDraft, frame, frameVersion, toolbarHost }: Props) {
+export default function PageEditor({
+  run,
+  focus,
+  onFocus,
+  onChange,
+  onDraft,
+  frame,
+  frameVersion,
+  toolbarHost,
+  onReloadFrame,
+}: Props) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [texts, setTexts] = useState<Record<PodName, Text>>({});
   const [images, setImages] = useState<Record<PodName, number>>({});
@@ -135,7 +146,7 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft, fra
   const viewPlan = selectedOption(view, "pod") ?? plan;
   const viewCopy = selectedOption(view, "copy") ?? copy;
 
-  const discard = () => {
+  const clearEdits = () => {
     setItems(null);
     setTexts({});
     setImages({});
@@ -149,7 +160,7 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft, fra
     setError(null);
     try {
       onChange(await api.savePage(run.id, edit));
-      discard();
+      clearEdits();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -212,7 +223,11 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft, fra
         </p>
         <div className="flex gap-2">
           <button
-            onClick={discard}
+            onClick={() => {
+              clearEdits();
+              // 사진 조정만 했으면 미리보기 주소가 그대로라 다시 열리지 않아, 버린 확대·위치가 남는다
+              onReloadFrame();
+            }}
             disabled={!dirty || saving}
             className="flex-1 rounded-lg border bg-white px-3 py-2 text-sm hover:bg-gray-100 disabled:opacity-40"
           >

@@ -25,6 +25,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [focus, setFocus] = useState<PodName | null>(null); // 수정 중인 Pod. 미리보기를 그 섹션으로 옮긴다
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const [frameKey, setFrameKey] = useState(0); // 바꾸면 미리보기를 새로 연다
   const [frameVersion, setFrameVersion] = useState(0); // iframe이 새로 열릴 때마다 +1 (PageEditor가 이벤트를 다시 붙인다)
   const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null); // 미리보기 위 이미지 조정 툴바 자리
   const frameScroll = useRef<number | null>(null); // 시안을 다시 열어도 보던 위치를 지킨다
@@ -119,6 +120,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
       <div style={{ height: frameHeight, width: PAGE_WIDTH * scale }}>
         <iframe
           ref={frameRef}
+          key={frameKey}
           title="CRM 시안 미리보기"
           // 확정 전 수정이 있으면 서버가 저장 없이 조립한 시안을 보여 준다
           {...(editing && draft.html ? { srcDoc: draft.html } : { src: api.previewUrl(run) })}
@@ -188,6 +190,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
                   frame={frameRef.current}
                   frameVersion={frameVersion}
                   toolbarHost={toolbarHost}
+                  onReloadFrame={() => setFrameKey((k) => k + 1)}
                 />
               </div>
             </div>
