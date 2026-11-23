@@ -184,7 +184,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
                   focus={focus}
                   onFocus={focusPod}
                   onChange={onChange}
-                  onDraft={(html, dirty) => setDraft({ html, dirty })}
+                  onDraft={(html, dirty) => setDraft((prev) => ({ html: html === undefined ? prev.html : html, dirty }))}
                   frame={frameRef.current}
                   frameVersion={frameVersion}
                   toolbarHost={toolbarHost}

@@ -26,8 +26,8 @@ interface Props {
   focus: PodName | null; // 미리보기에서 보고 있는 Pod
   onFocus: (pod: PodName, scroll?: boolean) => void; // scroll=false: 미리보기를 그 Pod로 옮기지 않는다
   onChange: (run: RunState) => void;
-  // 확정 전 시안 (null = 고친 것 없음 → 저장된 시안을 보여 준다)과 확정하지 않은 수정이 있는지
-  onDraft: (html: string | null, dirty: boolean) => void;
+  // 확정 전 시안 (null = 고친 것 없음 → 저장된 시안, undefined = 지금 보이는 시안을 그대로 둔다)과 확정하지 않은 수정이 있는지
+  onDraft: (html: string | null | undefined, dirty: boolean) => void;
   frame: HTMLIFrameElement | null; // 미리보기 iframe. 그 안에서 이미지를 직접 조정한다 (FrameCrop)
   frameVersion: number; // iframe이 새로 열릴 때마다 바뀐다
   toolbarHost: HTMLElement | null; // 미리보기 위 이미지 조정 툴바 자리
@@ -120,10 +120,10 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft, fra
   const notify = useRef(onDraft);
   notify.current = onDraft;
   // 이미지를 조정하는 동안에는 미리보기를 다시 열지 않는다 (끄는 중에 새로 열리면 조정이 끊긴다).
-  // 그동안 바뀐 값은 보이는 시안에 바로 입히고, 조정을 마치면 서버가 조립한 시안으로 바꾼다
+  // 그동안 바뀐 값은 보이는 시안에 바로 입히고, 조정을 마치면 서버가 조립한 시안으로 바꾼다.
+  // 수정이 있는지는 조정 중에도 알린다 (안 그러면 닫을 때 확정 안 한 조정을 묻지 않고 버린다)
   useEffect(() => {
-    if (cropPod) return;
-    notify.current(dirty ? (draftRun?.html ?? null) : null, dirty);
+    notify.current(cropPod ? undefined : dirty ? (draftRun?.html ?? null) : null, dirty);
   }, [dirty, draftRun, cropPod]);
 
   if (!plan || !copy) return null;
