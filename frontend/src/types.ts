@@ -29,6 +29,17 @@ export const LAYOUT_LABELS: Record<Layout, string> = {
   L4: "둥근 이미지 카드",
   L5: "좌 텍스트 · 우 이미지",
 };
+// backend/app/core/domain.py LAYOUT_RATIOS: 레이아웃별로 맞는 이미지 화면비
+export const LAYOUT_RATIOS: Record<Layout, ImageBrief["ratio"][]> = {
+  L1: ["16:9", "4:3"],
+  L2: ["16:9", "4:3"],
+  L3: ["16:9"],
+  L4: ["4:3", "1:1"],
+  L5: ["4:3", "1:1"],
+};
+// backend/app/steps/copy.py HEADLINE_MAX, BODY_MAX (넘으면 경고)
+export const HEADLINE_MAX = 20;
+export const BODY_MAX = 110;
 // 소구 강도. 원본 P1 입력 양식에서는 "무드"로 적혀 있다
 export type Mood = "HOT" | "WARM" | "COLD";
 
@@ -296,6 +307,13 @@ export interface Job {
   slot: string | null;
   started_at: string;
   error: string | null;
+}
+
+/** 그 슬롯에서 고른 안 (직접 고쳤으면 수정본). 아직 고르지 않았으면 null. */
+export function selectedOption<S extends StepName>(run: RunState, step: S, slot: string = MAIN_SLOT): Option<S> | null {
+  const state = run.steps[step].slots[slot] as SlotState<S> | undefined;
+  if (state?.selected == null) return null;
+  return state.edited ?? state.options[state.selected] ?? null;
 }
 
 /** ①에서 고른(또는 고친) Pod 순서. 아직 고르지 않았으면 빈 목록. */

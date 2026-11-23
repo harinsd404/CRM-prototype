@@ -78,7 +78,8 @@
         {%- endif %}
       </div>
   {%- endset %}
-  <section class="{{ s.layout | lower }}{% if s.bg != 'dark' %} bg-{{ s.bg }}{% endif %}">
+  {#- data-pod: 화면의 시안 수정에서 고르는 Pod로 미리보기를 스크롤할 때 쓴다 #}
+  <section class="{{ s.layout | lower }}{% if s.bg != 'dark' %} bg-{{ s.bg }}{% endif %}" data-pod="{{ s.pod }}">
   {%- if s.layout == "L1" %}
     <div class="inner">{{ text }}{{ media }}
     </div>

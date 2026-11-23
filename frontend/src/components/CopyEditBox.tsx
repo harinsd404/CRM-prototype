@@ -1,9 +1,5 @@
 import { useState } from "react";
-import type { CopyContent } from "../types";
-
-// 백엔드 check_copy와 같은 기준 (backend/app/steps/copy.py)
-const HEADLINE_MAX = 20;
-const BODY_MAX = 110;
+import { BODY_MAX, HEADLINE_MAX, type CopyContent } from "../types";
 
 interface Props {
   content: CopyContent;
@@ -11,7 +7,7 @@ interface Props {
   onSave: (edited: CopyContent) => void;
 }
 
-function Count({ length, max }: { length: number; max: number }) {
+export function Count({ length, max }: { length: number; max: number }) {
   return (
     <span className={`text-xs ${length > max ? "font-semibold text-danger" : "text-gray-400"}`}>
       {length}/{max}
