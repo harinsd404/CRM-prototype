@@ -133,7 +133,14 @@ export default function FrameCrop({ frame, frameVersion, toolbarHost, target, va
       zIndex: "2147483000",
     });
     root.id = OVERLAY_ID;
-    const ghost = make("img", { opacity: "0.45", pointerEvents: "auto", cursor: "grab", touchAction: "none" });
+    // 실제 사진처럼 object-fit: cover로 채운다. 사진 비율이 칸과 달라도(예: L3 칸에 4:3 사진) 칸 안 모습과 어긋나지 않는다
+    const ghost = make("img", {
+      opacity: "0.45",
+      objectFit: "cover",
+      pointerEvents: "auto",
+      cursor: "grab",
+      touchAction: "none",
+    });
     ghost.src = src;
     ghost.draggable = false;
     ghost.alt = "";
@@ -174,8 +181,10 @@ export default function FrameCrop({ frame, frameVersion, toolbarHost, target, va
         });
       }
       const f = mediaRect(doc, media);
-      const r = imageRect(f, latest.current.value);
+      const current = latest.current.value;
+      const r = imageRect(f, current);
       place(ghost, r);
+      ghost.style.objectPosition = `${current.x}% ${current.y}%`;
       place(outline, r);
       place(window_, f);
       // 넘친 부분만 반투명하게: 칸 자리를 구멍으로 뚫는다 (칸 안은 실제 시안이 보인다)
