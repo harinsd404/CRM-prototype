@@ -27,7 +27,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [frameKey, setFrameKey] = useState(0); // 바꾸면 미리보기를 새로 연다
   const [frameVersion, setFrameVersion] = useState(0); // iframe이 새로 열릴 때마다 +1 (PageEditor가 이벤트를 다시 붙인다)
-  const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null); // 미리보기 위 이미지 조정 툴바 자리
+  const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null); // 편집 화면 맨 위 막대의 사진 조정 툴바 자리
   const frameScroll = useRef<number | null>(null); // 시안을 다시 열어도 보던 위치를 지킨다
   const [draft, setDraft] = useState<{ html: string | null; dirty: boolean }>({ html: null, dirty: false }); // 확정 전 시안
 
@@ -125,8 +125,6 @@ export default function HtmlPreview({ run, onChange }: Props) {
         editing ? "min-h-0 min-w-0 flex-1" : ""
       }`}
     >
-      {/* 이미지 조정 툴바 (PageEditor → FrameCrop이 이 자리에 띄운다). 미리보기 위에 겹쳐 둔다 */}
-      <div ref={setToolbarHost} className="pointer-events-none absolute left-2 right-2 top-2 z-[5]" />
       <div style={{ height: frameHeight, width: PAGE_WIDTH * scale }}>
         <iframe
           ref={frameRef}
@@ -176,8 +174,10 @@ export default function HtmlPreview({ run, onChange }: Props) {
       {editorOpen && (
         <div role="dialog" aria-label="시안 수정" className="fixed inset-0 z-50 flex flex-col bg-gray-100">
           <div className="flex items-center justify-between gap-4 border-b bg-white px-5 py-2.5">
-            <h2 className="font-semibold text-ink">④ 시안 수정</h2>
-            <div className="flex items-center gap-3">
+            <h2 className="shrink-0 font-semibold text-ink">④ 시안 수정</h2>
+            {/* 사진 조정 툴바 자리 (PageEditor → FrameCrop). 미리보기 위에 겹치면 사진 위쪽 손잡이를 가려 잡을 수 없다 */}
+            <div ref={setToolbarHost} className="min-w-0 flex-1" />
+            <div className="flex shrink-0 items-center gap-3">
               {viewLinks}
               <button
                 onClick={toggleEditing}

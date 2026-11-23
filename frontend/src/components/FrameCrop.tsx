@@ -5,7 +5,7 @@ import { DEFAULT_ADJUST, adjustStyle, sameAdjust, type ImageAdjust, type PodName
 interface Props {
   frame: HTMLIFrameElement | null; // 시안 미리보기 iframe (같은 출처라 안쪽 DOM을 바로 다룬다)
   frameVersion: number; // iframe이 새로 열릴 때마다 바뀐다. 그때마다 이벤트를 다시 붙인다
-  toolbarHost: HTMLElement | null; // 미리보기 위에 띄우는 조정 툴바 자리
+  toolbarHost: HTMLElement | null; // 조정 툴바를 띄울 자리 (편집 화면 맨 위 막대)
   target: PodName | null; // 조정 중인 Pod (null = 조정 안 함)
   value: ImageAdjust; // 조정 중인 이미지의 지금 값
   disabled: boolean;
@@ -297,7 +297,7 @@ export default function FrameCrop({ frame, frameVersion, toolbarHost, target, va
   };
 
   return createPortal(
-    <div className="pointer-events-auto flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-gray-900/90 px-3 py-2 text-xs text-white shadow-lg">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-gray-900 px-3 py-1.5 text-xs text-white">
       <span className="font-semibold">{target} 사진</span>
       <span className="text-gray-300">
         {needZoom

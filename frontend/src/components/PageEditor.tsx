@@ -30,7 +30,7 @@ interface Props {
   onDraft: (html: string | null | undefined, dirty: boolean) => void;
   frame: HTMLIFrameElement | null; // 미리보기 iframe. 그 안에서 이미지를 직접 조정한다 (FrameCrop)
   frameVersion: number; // iframe이 새로 열릴 때마다 바뀐다
-  toolbarHost: HTMLElement | null; // 미리보기 위 이미지 조정 툴바 자리
+  toolbarHost: HTMLElement | null; // 편집 화면 맨 위 막대의 사진 조정 툴바 자리
   onReloadFrame: () => void; // 미리보기를 저장된 시안으로 새로 연다 (사진 조정이 iframe에 직접 입힌 스타일을 지운다)
 }
 
