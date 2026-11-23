@@ -43,15 +43,25 @@ export default function HtmlPreview({ run, onChange }: Props) {
   const scale = fit ? Math.min(1, box.width / PAGE_WIDTH) : 1;
   const frameHeight = editing ? Math.max(200, box.height) : FRAME_HEIGHT;
 
-  // 편집 화면이 창을 덮는 동안 뒤 페이지는 스크롤되지 않게 한다
+  // 편집 화면은 단계가 모두 골라져 있고 조립된 시안이 있을 때만 보인다
+  const editorOpen = editing && ready && run.html != null;
+  // 편집 중에 그 조건이 깨지면 (다른 탭·생성 작업이 단계를 바꿈) 편집 모드도 닫는다. 안 그러면 다시 열 버튼도 꺼진 채 남는다
   useEffect(() => {
-    if (!editing) return;
+    if (editing && !editorOpen) {
+      setEditing(false);
+      setDraft({ html: null, dirty: false });
+    }
+  }, [editing, editorOpen]);
+
+  // 편집 화면이 창을 덮는 동안 뒤 페이지는 스크롤되지 않게 한다 (화면이 보이는 조건과 같게 둬야 잠금이 남지 않는다)
+  useEffect(() => {
+    if (!editorOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previous;
     };
-  }, [editing]);
+  }, [editorOpen]);
 
   const toggleEditing = () => {
     if (editing && draft.dirty && !window.confirm("확정하지 않은 수정을 버리고 기존 디자인을 유지할까요?")) return;
@@ -160,10 +170,10 @@ export default function HtmlPreview({ run, onChange }: Props) {
       {!ready && <p className="mt-3 text-sm text-gray-500">①~③ 단계(이미지는 모든 Pod)에서 선택하면 조립할 수 있습니다.</p>}
       {error && <ErrorMessage message={error} onClose={() => setError(null)} />}
 
-      {run.html && !(editing && ready) && <div className="mt-5">{preview}</div>}
+      {run.html && !editorOpen && <div className="mt-5">{preview}</div>}
 
       {/* 편집 화면: 창 전체를 덮는다 (앱 헤더·피드백 버튼 위) */}
-      {run.html && editing && ready && (
+      {editorOpen && (
         <div role="dialog" aria-label="시안 수정" className="fixed inset-0 z-50 flex flex-col bg-gray-100">
           <div className="flex items-center justify-between gap-4 border-b bg-white px-5 py-2.5">
             <h2 className="font-semibold text-ink">④ 시안 수정</h2>
