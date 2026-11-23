@@ -309,6 +309,13 @@ export interface Job {
   error: string | null;
 }
 
+/** ④ 시안 수정 화면에서 고친 값 (backend/app/api/runs.py PageEdit). 비운 항목은 그대로 둔다 */
+export interface PageEdit {
+  items?: PodContent["items"]; // ① Pod 순서·레이아웃
+  copy?: Record<PodName, { headline: string; body: string }>; // ② 헤드·바디
+  images?: Record<PodName, number>; // ③ 고를 이미지 안 번호
+}
+
 /** 그 슬롯에서 고른 안 (직접 고쳤으면 수정본). 아직 고르지 않았으면 null. */
 export function selectedOption<S extends StepName>(run: RunState, step: S, slot: string = MAIN_SLOT): Option<S> | null {
   const state = run.steps[step].slots[slot] as SlotState<S> | undefined;

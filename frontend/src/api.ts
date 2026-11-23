@@ -6,6 +6,7 @@ import type {
   ImageCheck,
   ImportedImage,
   Me,
+  PageEdit,
   PageImportResult,
   ProductImage,
   ProductProfile,
@@ -196,6 +197,12 @@ export const api = {
     request<RunState>(`/runs/${runId}/steps/image/slots/${encodeURIComponent(slot)}/keep`, { method: "POST" }),
 
   render: (runId: string) => request<RunState>(`/runs/${runId}/render`, { method: "POST" }),
+
+  // ④ 시안 수정: 저장하지 않고 적용해 본 실행(html = 그 시안) / 확정해서 ①②③에 저장
+  previewPage: (runId: string, edit: PageEdit) =>
+    request<RunState>(`/runs/${runId}/page/preview`, { method: "POST", body: JSON.stringify(edit) }),
+  savePage: (runId: string, edit: PageEdit) =>
+    request<RunState>(`/runs/${runId}/page`, { method: "POST", body: JSON.stringify(edit) }),
 
   // 최종 시안 ZIP (index.html + images/ + fonts/ + html_input.json)
   downloadUrl: (run: RunState) => `${BASE}/api/runs/${run.id}/download?v=${encodeURIComponent(run.updated_at)}`,

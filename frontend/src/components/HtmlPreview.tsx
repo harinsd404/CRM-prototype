@@ -24,6 +24,7 @@ export default function HtmlPreview({ run, onChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [focus, setFocus] = useState<PodName | null>(null); // 수정 중인 Pod. 미리보기를 그 섹션으로 옮긴다
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const [draft, setDraft] = useState<{ html: string | null; dirty: boolean }>({ html: null, dirty: false }); // 확정 전 시안
 
   useEffect(() => {
     const box = frameBoxRef.current;
@@ -73,7 +74,11 @@ export default function HtmlPreview({ run, onChange }: Props) {
           )}
           {run.html && (
             <button
-              onClick={() => setEditing(!editing)}
+              onClick={() => {
+                if (editing && draft.dirty && !window.confirm("확정하지 않은 수정을 버리고 기존 디자인을 유지할까요?")) return;
+                setEditing(!editing);
+                setDraft({ html: null, dirty: false });
+              }}
               disabled={!ready}
               className="rounded-lg border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40"
             >
@@ -101,7 +106,8 @@ export default function HtmlPreview({ run, onChange }: Props) {
               <iframe
                 ref={frameRef}
                 title="CRM 시안 미리보기"
-                src={api.previewUrl(run)}
+                // 확정 전 수정이 있으면 서버가 저장 없이 조립한 시안을 보여 준다
+                {...(editing && draft.html ? { srcDoc: draft.html } : { src: api.previewUrl(run) })}
                 onLoad={scrollToFocus}
                 style={{ width: PAGE_WIDTH, height: FRAME_HEIGHT / scale, transform: `scale(${scale})` }}
                 className="block origin-top-left"
@@ -110,7 +116,13 @@ export default function HtmlPreview({ run, onChange }: Props) {
           </div>
           {editing && ready && (
             <div className="overflow-y-auto rounded-lg bg-gray-50 p-3 lg:h-[900px]">
-              <PageEditor run={run} focus={focus} onFocus={setFocus} onChange={onChange} />
+              <PageEditor
+                run={run}
+                focus={focus}
+                onFocus={setFocus}
+                onChange={onChange}
+                onDraft={(html, dirty) => setDraft({ html, dirty })}
+              />
             </div>
           )}
         </div>
