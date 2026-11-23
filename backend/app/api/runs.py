@@ -664,6 +664,9 @@ def save_page_edit(run_id: str, edit: PageEdit, user: CurrentUser) -> RunState:
     _get_run(run_id, user)  # 권한 확인
 
     def apply(run: RunState) -> None:
+        # 생성·수정 작업이 끝나며 같은 슬롯을 고르면 이 확정을 말없이 덮는다. 화면은 버튼을 꺼 두지만 다른 탭·직접 요청도 막는다
+        if run.job is not None and run.job.error is None:
+            raise HTTPException(409, "생성·수정 작업이 도는 중입니다. 작업이 끝난 뒤에 확정해 주세요.")
         _apply_page_edit(run, edit)
         _render(run)
 
