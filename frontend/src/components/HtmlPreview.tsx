@@ -62,15 +62,6 @@ export default function HtmlPreview({ run, onChange }: Props) {
         <h2 className="font-semibold text-ink">④ 최종 CRM 시안</h2>
         <div className="flex items-center gap-3">
           {run.html && (
-            <button
-              onClick={() => setEditing(!editing)}
-              disabled={!ready}
-              className="rounded-lg border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40"
-            >
-              {editing ? "수정 닫기" : "시안 수정하기"}
-            </button>
-          )}
-          {run.html && (
             <button onClick={() => setFit(!fit)} className="text-sm text-gray-500 underline hover:text-gray-900">
               {fit ? "실제 크기로 보기" : "화면에 맞춰 보기"}
             </button>
@@ -79,6 +70,15 @@ export default function HtmlPreview({ run, onChange }: Props) {
             <a href={api.previewUrl(run)} target="_blank" rel="noreferrer" className="text-sm text-gray-500 underline">
               새 탭에서 열기
             </a>
+          )}
+          {run.html && (
+            <button
+              onClick={() => setEditing(!editing)}
+              disabled={!ready}
+              className="rounded-lg border bg-white px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+            >
+              {editing ? "수정 닫기" : "시안 수정하기"}
+            </button>
           )}
           <button
             onClick={render}
