@@ -639,6 +639,10 @@ def _apply_page_edit(run: RunState, edit: PageEdit) -> None:
             else:
                 run.image_adjust[url] = adjust
 
+    # 고친 결과 조립할 수 없는 상태가 되면 (예: 이미지를 만들지 않은 Pod를 순서에 넣음) 조립하다 500이 나지 않게 먼저 알린다
+    if missing := [name for name in STEP_ORDER if not run.is_complete(name)]:
+        raise HTTPException(400, f"고친 결과 시안을 조립할 수 없습니다. 고르지 않은 단계가 생깁니다: {', '.join(missing)}")
+
 
 @router.post("/{run_id}/page/preview", response_model=RunState)
 def preview_page_edit(run_id: str, edit: PageEdit, user: CurrentUser) -> RunState:
