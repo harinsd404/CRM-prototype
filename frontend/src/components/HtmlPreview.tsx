@@ -24,6 +24,9 @@ export default function HtmlPreview({ run, onChange }: Props) {
   const [editing, setEditing] = useState(false);
   const [focus, setFocus] = useState<PodName | null>(null); // 수정 중인 Pod. 미리보기를 그 섹션으로 옮긴다
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const [frameVersion, setFrameVersion] = useState(0); // iframe이 새로 열릴 때마다 +1 (PageEditor가 이벤트를 다시 붙인다)
+  const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null); // 미리보기 위 이미지 조정 툴바 자리
+  const frameScroll = useRef<number | null>(null); // 시안을 다시 열어도 보던 위치를 지킨다
   const [draft, setDraft] = useState<{ html: string | null; dirty: boolean }>({ html: null, dirty: false }); // 확정 전 시안
 
   useEffect(() => {
@@ -35,14 +38,29 @@ export default function HtmlPreview({ run, onChange }: Props) {
   }, [run.html, editing]);
   const scale = fit ? Math.min(1, boxWidth / PAGE_WIDTH) : 1;
 
-  // 고칠 때마다 시안을 다시 조립해 iframe이 새로 열리므로, 열릴 때도 고치던 Pod로 옮긴다.
-  // scrollIntoView는 바깥 페이지까지 스크롤하므로 iframe 안의 창만 움직인다
-  const scrollToFocus = () => {
+  // 미리보기를 그 Pod 섹션으로 옮긴다. scrollIntoView는 바깥 페이지까지 스크롤하므로 iframe 안의 창만 움직인다
+  const scrollToPod = (pod: PodName | null) => {
     const doc = frameRef.current?.contentDocument;
-    const section = focus && doc?.querySelector<HTMLElement>(`section[data-pod="${CSS.escape(focus)}"]`);
+    const section = pod && doc?.querySelector<HTMLElement>(`section[data-pod="${CSS.escape(pod)}"]`);
     if (section) doc?.defaultView?.scrollTo({ top: section.offsetTop });
   };
-  useEffect(scrollToFocus, [focus]);
+
+  // 오른쪽 카드를 누르면 미리보기도 그 Pod로 옮긴다. 시안 속 이미지를 눌렀을 때(scroll=false)는 보던 자리를 그대로 둔다
+  const focusPod = (pod: PodName, scroll = true) => {
+    if (scroll && pod !== focus) scrollToPod(pod);
+    setFocus(pod);
+  };
+
+  // 고칠 때마다 시안을 다시 조립해 iframe이 새로 열린다. 보던 위치를 되살리고(처음이면 고치던 Pod로), 스크롤을 기억한다
+  const onFrameLoad = () => {
+    const win = frameRef.current?.contentWindow;
+    if (win) {
+      if (frameScroll.current != null) win.scrollTo({ top: frameScroll.current });
+      else scrollToPod(focus);
+      win.addEventListener("scroll", () => (frameScroll.current = win.scrollY));
+    }
+    setFrameVersion((v) => v + 1);
+  };
 
   const render = async () => {
     setBusy(true);
@@ -101,14 +119,16 @@ export default function HtmlPreview({ run, onChange }: Props) {
       {run.html && (
         <div className={editing && ready ? "mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px]" : "mt-5"}>
           {/* 시안은 폭 1440px 고정 페이지. 맞춤 보기는 패널 폭에 맞춰 축소하고, 실제 크기는 가로 스크롤로 본다 */}
-          <div ref={frameBoxRef} className={`rounded-lg border ${fit ? "overflow-hidden" : "overflow-x-auto"}`}>
+          <div ref={frameBoxRef} className={`relative rounded-lg border ${fit ? "overflow-clip" : "overflow-x-auto"}`}>
+            {/* 이미지 조정 툴바 (PageEditor → FrameCrop이 이 자리에 띄운다). 상자는 overflow-clip이라 툴바가 화면 헤더 아래에 붙어 따라온다 */}
+            <div ref={setToolbarHost} className="pointer-events-none sticky left-0 top-28 z-[5] h-0 px-2 pt-2" />
             <div style={{ height: FRAME_HEIGHT, width: PAGE_WIDTH * scale }}>
               <iframe
                 ref={frameRef}
                 title="CRM 시안 미리보기"
                 // 확정 전 수정이 있으면 서버가 저장 없이 조립한 시안을 보여 준다
                 {...(editing && draft.html ? { srcDoc: draft.html } : { src: api.previewUrl(run) })}
-                onLoad={scrollToFocus}
+                onLoad={onFrameLoad}
                 style={{ width: PAGE_WIDTH, height: FRAME_HEIGHT / scale, transform: `scale(${scale})` }}
                 className="block origin-top-left"
               />
@@ -119,9 +139,12 @@ export default function HtmlPreview({ run, onChange }: Props) {
               <PageEditor
                 run={run}
                 focus={focus}
-                onFocus={setFocus}
+                onFocus={focusPod}
                 onChange={onChange}
                 onDraft={(html, dirty) => setDraft({ html, dirty })}
+                frame={frameRef.current}
+                frameVersion={frameVersion}
+                toolbarHost={toolbarHost}
               />
             </div>
           )}

@@ -196,6 +196,18 @@ class Job(BaseModel):
     error: str | None = None  # 끝내 실패한 이유. 성공하면 job 자체가 None이 된다
 
 
+class ImageAdjust(BaseModel):
+    """④ 시안에서 이미지를 미세 조정한 값. 초점(x, y)을 중심으로 확대한다."""
+
+    zoom: float = Field(default=1.0, ge=1.0, le=3.0, description="확대 배율 (1 = 원래 크기)")
+    x: float = Field(default=50, ge=0, le=100, description="초점 가로 위치 (%)")
+    y: float = Field(default=50, ge=0, le=100, description="초점 세로 위치 (%)")
+
+    @property
+    def is_default(self) -> bool:
+        return self == ImageAdjust()
+
+
 class RunState(BaseModel):
     id: str
     created_at: datetime
@@ -203,6 +215,8 @@ class RunState(BaseModel):
     input: RunInput
     steps: dict[str, StepState] = Field(default_factory=lambda: {name: StepState() for name in STEP_ORDER})
     html: str | None = None
+    # 이미지 주소 → 미세 조정 값. 이미지마다 따로 두어, 다른 안으로 바꿨다 돌아와도 그 이미지의 조정이 남는다
+    image_adjust: dict[str, ImageAdjust] = {}
     job: Job | None = None  # 지금 도는 작업, 또는 마지막 작업이 실패했으면 그 오류
 
     def selected(self, step_name: str, slot: str = MAIN_SLOT) -> dict[str, Any]:

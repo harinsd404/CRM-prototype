@@ -72,7 +72,9 @@
   {%- endset %}
   {%- set media %}
       <div class="media" style="aspect-ratio:{{ s.aspect }};">
-        <img src="{{ s.image_url }}" alt="{{ s.pod }} 이미지">
+        {#- adjust: 화면에서 고친 확대·초점. 초점을 중심으로 확대하고, 잘리는 이미지는 초점 쪽을 남긴다 #}
+        <img src="{{ s.image_url }}" alt="{{ s.pod }} 이미지"
+          {%- if s.adjust %} style="object-position:{{ s.adjust.x }}% {{ s.adjust.y }}%; transform:scale({{ s.adjust.zoom }}); transform-origin:{{ s.adjust.x }}% {{ s.adjust.y }}%;"{% endif %}>
         {%- if s.layout == "L3" %}
         <div class="shade"></div>
         {%- endif %}

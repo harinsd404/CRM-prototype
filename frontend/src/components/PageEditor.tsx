@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { api, withBase } from "../api";
 import {
   BODY_MAX,
+  DEFAULT_ADJUST,
+  sameAdjust,
+  type ImageAdjust,
   HEADLINE_MAX,
   LAYOUTS,
   LAYOUT_LABELS,
@@ -15,15 +18,19 @@ import {
 } from "../types";
 import { Count } from "./CopyEditBox";
 import ErrorMessage from "./ErrorMessage";
+import FrameCrop from "./FrameCrop";
 import LayoutIcon from "./LayoutIcon";
 
 interface Props {
   run: RunState;
   focus: PodName | null; // 미리보기에서 보고 있는 Pod
-  onFocus: (pod: PodName) => void;
+  onFocus: (pod: PodName, scroll?: boolean) => void; // scroll=false: 미리보기를 그 Pod로 옮기지 않는다
   onChange: (run: RunState) => void;
   // 확정 전 시안 (null = 고친 것 없음 → 저장된 시안을 보여 준다)과 확정하지 않은 수정이 있는지
   onDraft: (html: string | null, dirty: boolean) => void;
+  frame: HTMLIFrameElement | null; // 미리보기 iframe. 그 안에서 이미지를 직접 조정한다 (FrameCrop)
+  frameVersion: number; // iframe이 새로 열릴 때마다 바뀐다
+  toolbarHost: HTMLElement | null; // 미리보기 위 이미지 조정 툴바 자리
 }
 
 type Text = { headline: string; body: string };
@@ -42,10 +49,12 @@ function move(items: Item[], from: number, to: number): Item[] {
  *  - 확정: ①②③에서 고른 안을 바꾼다 (순서·레이아웃 → ① 수정본, 헤드·바디 → ② 수정본, 이미지 → ③ 다른 안 선택).
  *    단계 화면과 최종 시안이 항상 같은 값을 보여 준다.
  *  - 기존 디자인 유지: 고친 값을 버리고 저장된 시안으로 돌아간다. */
-export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: Props) {
+export default function PageEditor({ run, focus, onFocus, onChange, onDraft, frame, frameVersion, toolbarHost }: Props) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [texts, setTexts] = useState<Record<PodName, Text>>({});
   const [images, setImages] = useState<Record<PodName, number>>({});
+  const [adjusts, setAdjusts] = useState<Record<string, ImageAdjust>>({}); // 이미지 주소 → 확대·초점
+  const [cropPod, setCropPod] = useState<PodName | null>(null); // 미리보기에서 이미지를 조정 중인 Pod
   const [draftRun, setDraftRun] = useState<RunState | null>(null); // 고친 값을 적용해 본 실행 (경고·시안)
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,9 +80,18 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: P
     Object.entries(images).filter(([pod, index]) => run.steps.image.slots[pod]?.selected !== index),
   );
   if (Object.keys(changedImages).length) edit.images = changedImages;
+  const savedAdjust = (url: string) => run.image_adjust?.[url] ?? DEFAULT_ADJUST;
+  const changedAdjusts = Object.fromEntries(
+    Object.entries(adjusts).filter(([url, adjust]) => !sameAdjust(adjust, savedAdjust(url))),
+  );
+  if (Object.keys(changedAdjusts).length) edit.adjust = changedAdjusts;
   const editKey = JSON.stringify(edit);
   const dirty = editKey !== "{}";
-  const changeCount = (edit.items ? 1 : 0) + Object.keys(changedTexts).length + Object.keys(changedImages).length;
+  const changeCount =
+    (edit.items ? 1 : 0) +
+    Object.keys(changedTexts).length +
+    Object.keys(changedImages).length +
+    Object.keys(changedAdjusts).length;
 
   // 고칠 때마다 서버가 저장 없이 조립한 시안으로 미리보기를 바꾼다. 늦게 온 응답이 최신 결과를 덮지 않게 번호로 거른다
   useEffect(() => {
@@ -101,9 +119,12 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: P
 
   const notify = useRef(onDraft);
   notify.current = onDraft;
+  // 이미지를 조정하는 동안에는 미리보기를 다시 열지 않는다 (끄는 중에 새로 열리면 조정이 끊긴다).
+  // 그동안 바뀐 값은 보이는 시안에 바로 입히고, 조정을 마치면 서버가 조립한 시안으로 바꾼다
   useEffect(() => {
+    if (cropPod) return;
     notify.current(dirty ? (draftRun?.html ?? null) : null, dirty);
-  }, [dirty, draftRun]);
+  }, [dirty, draftRun, cropPod]);
 
   if (!plan || !copy) return null;
 
@@ -118,6 +139,8 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: P
     setItems(null);
     setTexts({});
     setImages({});
+    setAdjusts({});
+    setCropPod(null);
     setError(null);
   };
 
@@ -145,6 +168,21 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: P
     }
   };
 
+  const chosenOption = (pod: PodName) => {
+    const slot = run.steps.image.slots[pod];
+    const index = images[pod] ?? slot?.selected;
+    return index != null ? slot?.options[index] : undefined;
+  };
+  const adjustOf = (url: string) => adjusts[url] ?? savedAdjust(url);
+  const cropUrl = cropPod ? chosenOption(cropPod)?.content.image_url : undefined;
+
+  // 시안 속 이미지를 눌렀다: 그 Pod의 조정을 켜고, 오른쪽 카드도 보이게 한다 (미리보기는 그대로 둔다)
+  const pickImage = (pod: PodName) => {
+    setCropPod(pod);
+    onFocus(pod, false);
+    document.getElementById(`edit-card-${pod}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+
   const setLayout = (index: number, layout: Layout) =>
     setItems(currentItems.map((item, i) => (i === index ? { ...item, layout } : item)));
 
@@ -155,7 +193,18 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: P
 
   return (
     <div className="space-y-3">
-      <div className="sticky top-0 z-10 space-y-2 rounded-lg border bg-white p-3 shadow-sm">
+      <FrameCrop
+        frame={frame}
+        frameVersion={frameVersion}
+        toolbarHost={toolbarHost}
+        target={cropUrl ? cropPod : null}
+        value={cropUrl ? adjustOf(cropUrl) : DEFAULT_ADJUST}
+        disabled={disabled}
+        onPick={pickImage}
+        onChange={(adjust) => cropUrl && setAdjusts((prev) => ({ ...prev, [cropUrl]: adjust }))}
+        onDone={() => setCropPod(null)}
+      />
+      <div className="sticky top-0 z-[5] space-y-2 rounded-lg border bg-white p-3 shadow-sm">
         <p className="text-xs text-gray-600">
           {dirty
             ? `확정하지 않은 수정 ${changeCount}건${previewing ? " · 미리보기 조립 중…" : " · 왼쪽은 확정 전 미리보기입니다"}`
@@ -195,6 +244,8 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: P
         const text = texts[pod] ?? (saved ? { headline: saved.headline, body: saved.body } : null);
         const image = run.steps.image.slots[pod];
         const chosenImage = images[pod] ?? image?.selected;
+        const chosen = chosenOption(pod);
+        const adjust = chosen ? adjustOf(chosen.content.image_url) : DEFAULT_ADJUST;
         const stale = view.steps.image.slots[pod]?.stale ?? [];
         const sameAsPrevious = i > 0 && currentItems[i - 1].layout === item.layout;
         const warnings = podWarnings(pod);
@@ -202,6 +253,7 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: P
         return (
           <article
             key={pod}
+            id={`edit-card-${pod}`}
             onClick={() => onFocus(pod)}
             onFocusCapture={() => onFocus(pod)}
             className={`space-y-3 rounded-lg border bg-white p-4 ${focus === pod ? "border-primary ring-1 ring-primary" : ""}`}
@@ -325,6 +377,32 @@ export default function PageEditor({ run, focus, onFocus, onChange, onDraft }: P
                     );
                   })}
                 </div>
+                {chosen && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (cropPod === pod) setCropPod(null);
+                        else {
+                          setCropPod(pod);
+                          onFocus(pod); // 미리보기를 그 Pod로 옮겨 이미지가 보이게 한다
+                        }
+                      }}
+                      disabled={disabled}
+                      className={`rounded-lg border px-3 py-1.5 text-xs disabled:opacity-40 ${
+                        cropPod === pod
+                          ? "border-primary bg-primary-soft font-semibold text-primary-pressed"
+                          : "bg-white text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      {cropPod === pod ? "조정 끝내기" : "미리보기에서 사진 크기·위치 조정"}
+                    </button>
+                    {!sameAdjust(adjust, DEFAULT_ADJUST) && (
+                      <span className="text-xs text-gray-500">확대 {Math.round(adjust.zoom * 100)}%</span>
+                    )}
+                  </div>
+                )}
                 {stale.length > 0 && (
                   <div className="mt-2 rounded bg-warning-soft p-2 text-xs text-warning">
                     {stale.map((note) => (

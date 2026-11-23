@@ -23,7 +23,7 @@ from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE
 from app.core import templates
 from app.core.feedback import FeedbackIn, add_feedback
 from app.core.templates import ProfileConflict, TemplateNameTaken, TemplateOut, get_template
-from app.core.state import MAIN_SLOT, STEP_ORDER, Job, Option, RunInput, RunState, SlotState
+from app.core.state import MAIN_SLOT, STEP_ORDER, ImageAdjust, Job, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
 from app.steps.copy import CopyOption, CopyStep
 from app.steps.image import ImageOption, ImageStep
@@ -585,6 +585,7 @@ class PageEdit(BaseModel):
     items: list[dict[str, Any]] | None = None  # ① Pod 순서·레이아웃 (노출 순서대로)
     copy_: dict[str, CopyText] = Field(default={}, alias="copy")  # ② Pod 이름 → 헤드·바디
     images: dict[str, int] = {}  # ③ Pod 이름 → 고를 이미지 안 번호
+    adjust: dict[str, ImageAdjust] = {}  # 이미지 주소 → 확대·초점 (기본값이면 조정을 지운다)
 
 
 def _apply_page_edit(run: RunState, edit: PageEdit) -> None:
@@ -627,6 +628,16 @@ def _apply_page_edit(run: RunState, edit: PageEdit) -> None:
         before = _snapshot(run)
         slot.selected, slot.edited = index, None
         _apply_change(run, "image", before)
+
+    if edit.adjust:
+        urls = {o.content["image_url"] for s in run.steps["image"].slots.values() for o in s.options}
+        if unknown := set(edit.adjust) - urls:
+            raise HTTPException(400, f"이 실행에 없는 이미지입니다: {', '.join(sorted(unknown))}")
+        for url, adjust in edit.adjust.items():
+            if adjust.is_default:
+                run.image_adjust.pop(url, None)
+            else:
+                run.image_adjust[url] = adjust
 
 
 @router.post("/{run_id}/page/preview", response_model=RunState)

@@ -47,5 +47,8 @@ def render_crm(run: RunState, html_input: dict[str, Any]) -> str:
     """원본 P3(HTML 생성 프롬프트)의 디자인 토큰과 L1~L5 정의를 템플릿으로 옮긴 결정적 조립. LLM을 쓰지 않는다."""
     pods = html_input["pods"]
     backgrounds = _backgrounds([p["layout"] for p in pods])
-    sections = [{**p, "bg": bg, "aspect": p["img_ratio"].replace(":", " / ")} for p, bg in zip(pods, backgrounds)]
+    sections = [
+        {**p, "bg": bg, "aspect": p["img_ratio"].replace(":", " / "), "adjust": run.image_adjust.get(p["image_url"])}
+        for p, bg in zip(pods, backgrounds)
+    ]
     return _env.get_template("crm.html.j2").render(product_name=run.input.product_name, sections=sections)
