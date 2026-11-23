@@ -612,9 +612,13 @@ def _apply_page_edit(run: RunState, edit: PageEdit) -> None:
 
     if edit.copy_:
         def change_copy(content: dict[str, Any]) -> dict[str, Any]:
-            if unknown := set(edit.copy_) - {p["pod"] for p in content["pods"]}:
+            # 같은 요청에서 ① 순서에서 뺀 Pod의 카피는 남기지 않는다. 남기면 카피 검사(확정된 순서에 없는 Pod)가 수정 전체를 거부한다.
+            # 그 카피는 원래 카피안들에 그대로 있어, Pod를 다시 넣고 그 안을 고르면 돌아온다
+            plan_pods = {item["pod"] for item in run.selected("pod")["items"]}
+            current = [p for p in content["pods"] if p["pod"] in plan_pods]
+            if unknown := set(edit.copy_) - {p["pod"] for p in current}:
                 raise HTTPException(400, f"카피에 없는 Pod입니다: {', '.join(sorted(unknown))}")
-            pods = [{**p, **edit.copy_[p["pod"]].model_dump()} if p["pod"] in edit.copy_ else p for p in content["pods"]]
+            pods = [{**p, **edit.copy_[p["pod"]].model_dump()} if p["pod"] in edit.copy_ else p for p in current]
             return {**content, "pods": pods}
 
         edit_selected("copy", change_copy)
