@@ -23,7 +23,7 @@ from app.core.domain import LAYOUT_RATIOS, NO_SAFE_ZONE
 from app.core import templates
 from app.core.feedback import FeedbackIn, add_feedback
 from app.core.templates import ProfileConflict, TemplateNameTaken, TemplateOut, get_template
-from app.core.state import MAIN_SLOT, STEP_ORDER, Job, Option, RunInput, RunState, SlotState
+from app.core.state import MAIN_SLOT, STEP_ORDER, ImageAdjust, Job, Option, RunInput, RunState, SlotState
 from app.steps import STEPS, Step
 from app.steps.copy import CopyOption, CopyStep
 from app.steps.image import ImageOption, ImageStep
@@ -560,14 +560,117 @@ def render(run_id: str, user: CurrentUser) -> RunState:
     return store.mutate_run(run_id, apply)
 
 
+def _with_base(html: str) -> str:
+    """배포 경로 아래에서 열리면 시안 안의 이미지·폰트 주소(/api/...)에도 경로를 붙인다."""
+    base = settings.base_path.rstrip("/")
+    return html.replace("/api/", f"{base}/api/") if base else html
+
+
 @router.get("/{run_id}/preview", response_class=HTMLResponse)
 def preview(run_id: str, user: CurrentUser) -> str:
     run = _get_run(run_id, user)
     if run.html is None:
         raise HTTPException(404, "아직 조립된 시안이 없습니다.")
-    # 배포 경로 아래에서 열리면 시안 안의 이미지·폰트 주소(/api/...)에도 경로를 붙인다
-    base = settings.base_path.rstrip("/")
-    return run.html.replace("/api/", f"{base}/api/") if base else run.html
+    return _with_base(run.html)
+
+
+class CopyText(BaseModel):
+    headline: str
+    body: str
+
+
+class PageEdit(BaseModel):
+    """④ 시안 수정 화면에서 고친 값. 비운 항목은 그대로 둔다."""
+
+    items: list[dict[str, Any]] | None = None  # ① Pod 순서·레이아웃 (노출 순서대로)
+    copy_: dict[str, CopyText] = Field(default={}, alias="copy")  # ② Pod 이름 → 헤드·바디
+    images: dict[str, int] = {}  # ③ Pod 이름 → 고를 이미지 안 번호
+    adjust: dict[str, ImageAdjust] = {}  # 이미지 주소 → 확대·초점 (기본값이면 조정을 지운다)
+
+
+def _apply_page_edit(run: RunState, edit: PageEdit) -> None:
+    """선택·직접 수정(select_option)과 같은 방법으로 ①②③에서 고른 안을 바꾼다.
+    ①을 먼저 바꿔야 ②가 새 Pod 순서를 따르므로 ① → ② → ③ 순서로 적용한다."""
+    if not all(run.is_complete(name) for name in STEP_ORDER):
+        raise HTTPException(400, "①~③ 단계를 모두 고른 뒤에 시안을 고칠 수 있습니다.")
+
+    def edit_selected(step_name: str, change: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+        slot = run.steps[step_name].slots[MAIN_SLOT]
+        current = slot.selected_option
+        assert slot.selected is not None and current is not None
+        before = _snapshot(run)
+        try:
+            slot.edited = STEPS[step_name].make_edited_option(run, MAIN_SLOT, current.angle, change(current.content))
+        except ValidationError as e:
+            raise HTTPException(422, f"수정 내용 형식이 맞지 않습니다: {e}") from e
+        except ValueError as e:  # 입력에 없는 Pod 이름 등
+            raise HTTPException(422, str(e)) from e
+        _apply_change(run, step_name, before)
+
+    if edit.items is not None:
+        edit_selected("pod", lambda content: {**content, "items": edit.items})
+
+    if edit.copy_:
+        def change_copy(content: dict[str, Any]) -> dict[str, Any]:
+            # 같은 요청에서 ① 순서에서 뺀 Pod의 카피는 남기지 않는다. 남기면 카피 검사(확정된 순서에 없는 Pod)가 수정 전체를 거부한다.
+            # 그 카피는 원래 카피안들에 그대로 있어, Pod를 다시 넣고 그 안을 고르면 돌아온다
+            plan_pods = {item["pod"] for item in run.selected("pod")["items"]}
+            current = [p for p in content["pods"] if p["pod"] in plan_pods]
+            if unknown := set(edit.copy_) - {p["pod"] for p in current}:
+                raise HTTPException(400, f"카피에 없는 Pod입니다: {', '.join(sorted(unknown))}")
+            pods = [{**p, **edit.copy_[p["pod"]].model_dump()} if p["pod"] in edit.copy_ else p for p in current]
+            return {**content, "pods": pods}
+
+        edit_selected("copy", change_copy)
+
+    for pod, index in edit.images.items():
+        slot = run.steps["image"].slots.get(pod)
+        if slot is None:
+            raise HTTPException(400, f"이미지 단계에 '{pod}' 슬롯이 없습니다.")
+        if not 0 <= index < len(slot.options):
+            raise HTTPException(400, f"'{pod}' 이미지는 0~{len(slot.options) - 1}번 안 중에서 고를 수 있습니다.")
+        before = _snapshot(run)
+        slot.selected, slot.edited = index, None
+        _apply_change(run, "image", before)
+
+    if edit.adjust:
+        urls = {o.content["image_url"] for s in run.steps["image"].slots.values() for o in s.options}
+        if unknown := set(edit.adjust) - urls:
+            raise HTTPException(400, f"이 실행에 없는 이미지입니다: {', '.join(sorted(unknown))}")
+        for url, adjust in edit.adjust.items():
+            if adjust.is_default:
+                run.image_adjust.pop(url, None)
+            else:
+                run.image_adjust[url] = adjust
+
+    # 고친 결과 조립할 수 없는 상태가 되면 (예: 이미지를 만들지 않은 Pod를 순서에 넣음) 조립하다 500이 나지 않게 먼저 알린다
+    if missing := [name for name in STEP_ORDER if not run.is_complete(name)]:
+        raise HTTPException(400, f"고친 결과 시안을 조립할 수 없습니다. 고르지 않은 단계가 생깁니다: {', '.join(missing)}")
+
+
+@router.post("/{run_id}/page/preview", response_model=RunState)
+def preview_page_edit(run_id: str, edit: PageEdit, user: CurrentUser) -> RunState:
+    """고친 값을 저장하지 않고 적용해 본 실행을 돌려준다 (html = 그 시안). 확정 전에 미리 보는 데 쓴다."""
+    run = _get_run(run_id, user)
+    run.html = None  # 적용하는 동안 _apply_change가 시안을 조립하며 파일(html_input.json)을 쓰지 않게 한다
+    _apply_page_edit(run, edit)
+    run.html = _with_base(render_crm(run, build_html_input(run)))
+    return run
+
+
+@router.post("/{run_id}/page", response_model=RunState)
+def save_page_edit(run_id: str, edit: PageEdit, user: CurrentUser) -> RunState:
+    """고친 값을 확정한다. ①②③에서 고른 안이 바뀌고 시안을 다시 조립한다."""
+    _get_run(run_id, user)  # 권한 확인
+
+    def apply(run: RunState) -> None:
+        # 생성·수정 작업이 끝나며 같은 슬롯을 고르면 이 확정을 말없이 덮는다. 화면은 버튼을 꺼 두지만 다른 탭·직접 요청도 막는다
+        if run.job is not None and run.job.error is None:
+            raise HTTPException(409, "생성·수정 작업이 도는 중입니다. 작업이 끝난 뒤에 확정해 주세요.")
+        _apply_page_edit(run, edit)
+        _render(run)
+
+    return store.mutate_run(run_id, apply)
 
 
 _FONTS_DIR = Path(__file__).resolve().parents[2] / "assets" / "fonts"

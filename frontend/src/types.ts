@@ -29,6 +29,17 @@ export const LAYOUT_LABELS: Record<Layout, string> = {
   L4: "둥근 이미지 카드",
   L5: "좌 텍스트 · 우 이미지",
 };
+// backend/app/core/domain.py LAYOUT_RATIOS: 레이아웃별로 맞는 이미지 화면비
+export const LAYOUT_RATIOS: Record<Layout, ImageBrief["ratio"][]> = {
+  L1: ["16:9", "4:3"],
+  L2: ["16:9", "4:3"],
+  L3: ["16:9"],
+  L4: ["4:3", "1:1"],
+  L5: ["4:3", "1:1"],
+};
+// backend/app/steps/copy.py HEADLINE_MAX, BODY_MAX (넘으면 경고)
+export const HEADLINE_MAX = 20;
+export const BODY_MAX = 110;
 // 소구 강도. 원본 P1 입력 양식에서는 "무드"로 적혀 있다
 export type Mood = "HOT" | "WARM" | "COLD";
 
@@ -285,6 +296,7 @@ export interface RunState {
   input: RunInput;
   steps: { [S in StepName]: StepState<S> };
   html: string | null;
+  image_adjust?: Record<string, ImageAdjust>; // 이미지 주소 → ④에서 고친 확대·초점
   job?: Job | null; // 서버에서 도는 생성·수정 작업, 또는 마지막 작업이 실패했으면 그 오류
 }
 
@@ -296,6 +308,36 @@ export interface Job {
   slot: string | null;
   started_at: string;
   error: string | null;
+}
+
+/** ④ 시안 수정 화면에서 고친 값 (backend/app/api/runs.py PageEdit). 비운 항목은 그대로 둔다 */
+export interface PageEdit {
+  items?: PodContent["items"]; // ① Pod 순서·레이아웃
+  copy?: Record<PodName, { headline: string; body: string }>; // ② 헤드·바디
+  images?: Record<PodName, number>; // ③ 고를 이미지 안 번호
+  adjust?: Record<string, ImageAdjust>; // 이미지 주소 → 확대·초점 (기본값이면 조정을 지운다)
+}
+
+/** ④ 시안에서 이미지를 미세 조정한 값 (backend/app/core/state.py ImageAdjust). 초점(x, y %)을 중심으로 확대한다 */
+export interface ImageAdjust {
+  zoom: number; // 1 ~ 3
+  x: number; // 0 ~ 100
+  y: number; // 0 ~ 100
+}
+export const DEFAULT_ADJUST: ImageAdjust = { zoom: 1, x: 50, y: 50 };
+export const sameAdjust = (a: ImageAdjust, b: ImageAdjust) => a.zoom === b.zoom && a.x === b.x && a.y === b.y;
+
+/** 시안 템플릿(crm.html.j2)의 img에 붙는 것과 같은 스타일 */
+export function adjustStyle(adjust: ImageAdjust) {
+  const point = `${adjust.x}% ${adjust.y}%`;
+  return { objectPosition: point, transform: `scale(${adjust.zoom})`, transformOrigin: point };
+}
+
+/** 그 슬롯에서 고른 안 (직접 고쳤으면 수정본). 아직 고르지 않았으면 null. */
+export function selectedOption<S extends StepName>(run: RunState, step: S, slot: string = MAIN_SLOT): Option<S> | null {
+  const state = run.steps[step].slots[slot] as SlotState<S> | undefined;
+  if (state?.selected == null) return null;
+  return state.edited ?? state.options[state.selected] ?? null;
 }
 
 /** ①에서 고른(또는 고친) Pod 순서. 아직 고르지 않았으면 빈 목록. */
